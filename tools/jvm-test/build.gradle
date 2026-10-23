@@ -1,0 +1,44 @@
+// Compiles the app's Java sources against Robolectric's android-all jar and runs the app's own
+// Robolectric tests, for machines that can reach Maven Central but not Google's Maven/SDK hosts.
+plugins { id 'java' }
+
+def repoRoot = file('../..')
+def roboDeps = file("$buildDir/robo-deps")
+def androidAll = files("$roboDeps/android-all-instrumented-15-robolectric-13954326-i7.jar")
+def classpathAndroid = files("$roboDeps/classpath-android.jar")     // same minus android/os/Build* (run.sh)
+
+tasks.withType(JavaCompile).configureEach { options.release = 17; options.encoding = 'UTF-8' }
+
+sourceSets {
+    main { java { srcDirs = ["$repoRoot/app/src/main/java"] } }
+    test {
+        java { srcDirs = ["$repoRoot/app/src/test/java", 'androidx-stubs'] }
+        resources { srcDirs = ["$repoRoot/app/src/test/resources", "$buildDir/generated-test-config"] }
+    }
+}
+
+if (project.hasProperty('extraTests')) sourceSets.test.java.srcDirs += project.property('extraTests')   // ad-hoc probes
+
+dependencies {
+    compileOnly androidAll
+    compileOnly 'org.robolectric:sandbox:4.17'        // the instrumented jar's classes implement its marker interfaces
+    testCompileOnly androidAll
+    testRuntimeOnly classpathAndroid                    // JUnit reflects on test classes before the sandbox exists
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation('org.robolectric:robolectric:4.17') {
+        exclude group: 'androidx.test'                 // Google Maven only; androidx-stubs/ stands in
+        exclude group: 'androidx.test.espresso'
+    }
+}
+
+test {
+    useJUnit()
+    workingDir = file("$repoRoot/app")                 // tests write build/shots/ like the AGP run does
+    maxHeapSize = '3g'
+    jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED', '--add-opens=java.base/java.lang=ALL-UNNAMED',
+            '--add-opens=java.base/java.util=ALL-UNNAMED', '--add-opens=java.base/java.nio=ALL-UNNAMED'   // Robolectric FileDescriptor shadows
+    systemProperty 'robolectric.offline', 'true'
+    systemProperty 'robolectric.dependency.dir', roboDeps.absolutePath
+    testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full'; showStandardStreams = project.hasProperty('showOutput') }
+    outputs.upToDateWhen { false }
+}
