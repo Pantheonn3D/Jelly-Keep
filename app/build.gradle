@@ -1,0 +1,50 @@
+plugins { id 'com.android.application' }
+
+def keyProps = new Properties()
+def keyFile = rootProject.file('keystore.properties')
+if (keyFile.exists()) keyFile.withInputStream { keyProps.load(it) }
+
+android {
+    namespace 'com.pantheon3d.jellykeep'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.pantheon3d.jellykeep'
+        minSdk 26
+        targetSdk 36
+        versionCode 8
+        versionName '1.6'
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file(keyProps['storeFile'] ?: 'squish-upload.jks')
+            storePassword keyProps['storePassword']
+            keyAlias keyProps['keyAlias']
+            keyPassword keyProps['keyPassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            signingConfig signingConfigs.release
+        }
+    }
+
+    testOptions { unitTests { includeAndroidResources = true; all { maxHeapSize = '3g' } } }
+
+    androidResources { noCompress 'ogg' }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
+}

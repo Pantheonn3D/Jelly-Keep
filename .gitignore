@@ -1,0 +1,14 @@
+# signing: the upload key and its passwords never go in git
+*.jks
+*.keystore
+keystore.properties
+
+# local machine
+local.properties
+.gradle/
+build/
+app/build/
+.idea/
+*.iml
+.DS_Store
+captures/
