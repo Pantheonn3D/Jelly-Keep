@@ -7,6 +7,7 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.window.OnBackInvokedDispatcher;
 
 public class MainActivity extends Activity {
     private Game game;
@@ -25,7 +26,16 @@ public class MainActivity extends Activity {
         game = new Game(this);
         setContentView(game);
         hideBars();
+        // Android 13+ (and always from targetSdk 36): back arrives here, not in onBackPressed
+        if (Build.VERSION.SDK_INT >= 33)
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
     }
+
+    /** Back closes panels first; on the title screen it leaves the app (keeping the task, like the system does). */
+    private void back() { if (!game.onBack()) moveTaskToBack(true); }
+
+    @SuppressWarnings("deprecation")
+    @Override public void onBackPressed() { back(); }
 
     @Override protected void onResume() { super.onResume(); hideBars(); game.resume(); }
     @Override protected void onPause() { game.pause(); super.onPause(); }

@@ -4,6 +4,10 @@ def keyProps = new Properties()
 def keyFile = rootProject.file('keystore.properties')
 if (keyFile.exists()) keyFile.withInputStream { keyProps.load(it) }
 
+// -Plive=true builds the real AdMob + Play Billing integration (src/live). Default: simulated ads and test
+// purchases (src/stub) with zero third-party runtime dependencies. Ad unit IDs default to Google's test IDs.
+def live = (findProperty('live') ?: 'false').toString().toBoolean()
+
 android {
     namespace 'com.pantheon3d.jellykeep'
     compileSdk 36
@@ -12,13 +16,20 @@ android {
         applicationId 'com.pantheon3d.jellykeep'
         minSdk 26
         targetSdk 36
-        versionCode 8
-        versionName '1.6'
+        versionCode 9
+        versionName '2.0'
+        manifestPlaceholders = [admobAppId: (findProperty('admobAppId') ?: 'ca-app-pub-3940256099942544~3347511713')]
+        resValue 'string', 'admob_rewarded', (findProperty('admobRewarded') ?: 'ca-app-pub-3940256099942544/5224354917').toString()
+        resValue 'string', 'admob_interstitial', (findProperty('admobInterstitial') ?: 'ca-app-pub-3940256099942544/1033173712').toString()
     }
+
+    buildFeatures { resValues true }
+
+    sourceSets { main { java.srcDirs += live ? 'src/live/java' : 'src/stub/java' } }
 
     signingConfigs {
         release {
-            storeFile rootProject.file(keyProps['storeFile'] ?: 'squish-upload.jks')
+            storeFile rootProject.file(keyProps['storeFile'] ?: 'jellykeep-upload.jks')
             storePassword keyProps['storePassword']
             keyAlias keyProps['keyAlias']
             keyPassword keyProps['keyPassword']
@@ -45,6 +56,12 @@ android {
 }
 
 dependencies {
+    if (live) {
+        implementation 'com.google.android.gms:play-services-ads:24.4.0'
+        implementation 'com.google.android.ump:user-messaging-platform:3.1.0'
+        implementation 'com.android.billingclient:billing:8.0.0'
+        implementation 'com.google.android.play:review:2.0.2'
+    }
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.17'
 }

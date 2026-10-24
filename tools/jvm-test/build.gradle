@@ -4,13 +4,13 @@ plugins { id 'java' }
 
 def repoRoot = file('../..')
 def roboDeps = file("$buildDir/robo-deps")
-def androidAll = files("$roboDeps/android-all-instrumented-15-robolectric-13954326-i7.jar")
+def androidAll = files("$roboDeps/android-all-15-robolectric-13954326.jar")            // compile against (uninstrumented)
 def classpathAndroid = files("$roboDeps/classpath-android.jar")     // same minus android/os/Build* (run.sh)
 
 tasks.withType(JavaCompile).configureEach { options.release = 17; options.encoding = 'UTF-8' }
 
 sourceSets {
-    main { java { srcDirs = ["$repoRoot/app/src/main/java"] } }
+    main { java { srcDirs = ["$repoRoot/app/src/main/java", "$repoRoot/app/src/stub/java", "$buildDir/gen"] } }   // gen: R.java from run.sh
     test {
         java { srcDirs = ["$repoRoot/app/src/test/java", 'androidx-stubs'] }
         resources { srcDirs = ["$repoRoot/app/src/test/resources", "$buildDir/generated-test-config"] }
@@ -21,7 +21,6 @@ if (project.hasProperty('extraTests')) sourceSets.test.java.srcDirs += project.p
 
 dependencies {
     compileOnly androidAll
-    compileOnly 'org.robolectric:sandbox:4.17'        // the instrumented jar's classes implement its marker interfaces
     testCompileOnly androidAll
     testRuntimeOnly classpathAndroid                    // JUnit reflects on test classes before the sandbox exists
     testImplementation 'junit:junit:4.13.2'

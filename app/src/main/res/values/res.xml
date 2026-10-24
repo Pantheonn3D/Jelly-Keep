@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Jelly Keep</string>
+    <!-- Hosted privacy policy (required by Play once ads/IAP are live). Empty = the Settings link is hidden. -->
+    <string name="privacy_url" translatable="false"></string>
     <color name="bg">#15112E</color>
     <color name="ic_bg">#221B4A</color>
     <style name="Theme.Squish" parent="android:Theme.Material.NoActionBar">

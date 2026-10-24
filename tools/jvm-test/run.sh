@@ -6,15 +6,19 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd); out="$here/build"
 mirror=${MAVEN_MIRROR:-https://maven-central.storage-download.googleapis.com/maven2}
 fw=${FRAMEWORK_RES:-/usr/share/android-framework-res/framework-res.apk}
-aa=android-all-instrumented-15-robolectric-13954326-i7.jar
+ver=15-robolectric-13954326
+aa=android-all-instrumented-$ver-i7.jar       # what Robolectric runs (SDK 35)
+plain=android-all-$ver.jar                    # the same framework, uninstrumented: what the app compiles against
 mkdir -p "$out/robo-deps" "$out/res" "$out/generated-test-config/com/android/tools"
 
 [ -s "$out/robo-deps/$aa" ] || curl -fsS --retry 4 --retry-delay 2 -o "$out/robo-deps/$aa" \
-    "$mirror/org/robolectric/android-all-instrumented/15-robolectric-13954326-i7/$aa"
+    "$mirror/org/robolectric/android-all-instrumented/$ver-i7/$aa"
+[ -s "$out/robo-deps/$plain" ] || curl -fsS --retry 4 --retry-delay 2 -o "$out/robo-deps/$plain" \
+    "$mirror/org/robolectric/android-all/$ver/$plain"
 
 # Copy for the plain JVM classpath (JUnit reflects on test classes there): without android.os.Build*, so
-# Conscrypt's "am I on Android?" probe gets ClassNotFound instead of running instrumented code unsandboxed.
-[ -s "$out/robo-deps/classpath-android.jar" ] || python3 -I - "$out/robo-deps/$aa" "$out/robo-deps/classpath-android.jar" <<'PY'
+# Conscrypt's "am I on Android?" probe gets ClassNotFound instead of running framework code outside the sandbox.
+[ -s "$out/robo-deps/classpath-android.jar" ] || python3 -I - "$out/robo-deps/$plain" "$out/robo-deps/classpath-android.jar" <<'PY'
 import sys, zipfile
 src, dst = sys.argv[1], sys.argv[2]
 with zipfile.ZipFile(src) as zi, zipfile.ZipFile(dst + '.tmp', 'w', zipfile.ZIP_DEFLATED) as zo:
@@ -29,11 +33,12 @@ pkg=$(sed -n "s/.*applicationId '\([^']*\)'.*/\1/p" "$g"); vc=$(sed -n 's/.*vers
 vn=$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" "$g"); min=$(sed -n 's/.*minSdk \([0-9]*\).*/\1/p' "$g"); tgt=$(sed -n 's/.*targetSdk \([0-9]*\).*/\1/p' "$g")
 sed -e "s|<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"|& package=\"$pkg\" android:versionCode=\"$vc\" android:versionName=\"$vn\"|" \
     -e "s|^\(\s*\)<application|\1<uses-sdk android:minSdkVersion=\"$min\" android:targetSdkVersion=\"$tgt\" />\n\1<application|" \
+    -e 's|\${admobAppId}|ca-app-pub-3940256099942544~3347511713|' \
     "$root/app/src/main/AndroidManifest.xml" > "$out/AndroidManifest.xml"
 
-rm -f "$out/res/compiled.zip"
+rm -rf "$out/res/compiled.zip" "$out/gen"; mkdir -p "$out/gen"
 aapt2 compile --dir "$root/app/src/main/res" -o "$out/res/compiled.zip"
-aapt2 link -o "$out/resources.ap_" -I "$fw" --manifest "$out/AndroidManifest.xml" \
+aapt2 link -o "$out/resources.ap_" -I "$fw" --manifest "$out/AndroidManifest.xml" --java "$out/gen" \
     -A "$root/app/src/main/assets" -0 ogg --auto-add-overlay "$out/res/compiled.zip"
 
 cat > "$out/generated-test-config/com/android/tools/test_config.properties" <<CFG

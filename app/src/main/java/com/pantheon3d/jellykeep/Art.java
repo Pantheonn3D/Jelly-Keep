@@ -40,6 +40,9 @@ final class Art {
 
     /** Painted UI kit (null = fall back to the coded kit). */
     final Bitmap uiPanel, uiGold, uiPlank, uiSlot, uiRibbon, uiRound, uiBadge, icShield, icClose, icPlay, icMute, icSound, icStrike;
+    /** 2.0 icons and props. Not painted yet: each draws a coded glyph until its asset exists (see docs/art-and-audio-requests.md). */
+    final Bitmap icGem, icJelly, icQuests, icShop, icRebirth, icGear, icFlame, icBubble, icCheck, icMusic, icHaptics, icBell,
+            icPouch, icShake, icGift, courier, logo;
     private final Paint np = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), npDark = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
             npShadow = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     { npDark.setColorFilter(new android.graphics.LightingColorFilter(0xFFC8C0B8, 0)); npShadow.setColorFilter(new android.graphics.PorterDuffColorFilter(0xFF000000, android.graphics.PorterDuff.Mode.SRC_IN)); npShadow.setAlpha(95); }
@@ -117,9 +120,16 @@ final class Art {
         uiRibbon = opt(ctx, "ui_ribbon.webp"); uiRound = opt(ctx, "ui_round.webp"); uiBadge = opt(ctx, "ui_badge.webp");
         icShield = opt(ctx, "ui_ic_shield.webp"); icClose = opt(ctx, "ui_ic_close.webp"); icPlay = opt(ctx, "ui_ic_play.webp");
         icMute = opt(ctx, "ui_ic_mute.webp"); icSound = opt(ctx, "ui_ic_sound.webp"); icStrike = opt(ctx, "ui_ic_strike.webp");
-        puddle = opt(ctx, "puddle.webp"); chest = opt(ctx, "chest.webp"); chestOpen = opt(ctx, "chest_open.webp"); ground = opt(ctx, "ground.webp");
+        puddle = opt(ctx, "puddle.webp"); chest = opt(ctx, "chest.webp"); chestOpen = opt(ctx, "chest_open.webp");
+        ground = groundBaked == null ? opt(ctx, "ground.webp") : null;        // the baked one replaces it (saves ~8 MB)
         mortar = load(ctx, "mortar.webp");
         wall = load(ctx, "wall.webp");
+        icGem = opt(ctx, "ui_ic_gem.webp"); icJelly = opt(ctx, "ui_ic_jelly.webp"); icQuests = opt(ctx, "ui_ic_quests.webp");
+        icShop = opt(ctx, "ui_ic_shop.webp"); icRebirth = opt(ctx, "ui_ic_rebirth.webp"); icGear = opt(ctx, "ui_ic_gear.webp");
+        icFlame = opt(ctx, "ui_ic_flame.webp"); icBubble = opt(ctx, "ui_ic_bubble.webp"); icCheck = opt(ctx, "ui_ic_check.webp");
+        icMusic = opt(ctx, "ui_ic_music.webp"); icHaptics = opt(ctx, "ui_ic_haptics.webp"); icBell = opt(ctx, "ui_ic_bell.webp");
+        icPouch = opt(ctx, "ui_ic_pouch.webp"); icShake = opt(ctx, "ui_ic_shake.webp"); icGift = opt(ctx, "ui_ic_gift.webp");
+        courier = opt(ctx, "courier.webp"); logo = opt(ctx, "logo.webp");
     }
 
     private static Bitmap load(Context ctx, String name) {
@@ -146,6 +156,25 @@ final class Art {
     }
 
     void label(Canvas c, String str, float x, float y, float size, int fill) { label(c, str, x, y, size, fill, Paint.Align.CENTER); }
+
+    /** label() faded by alpha, without an offscreen layer (cheap enough for many floating numbers). */
+    void label(Canvas c, String str, float x, float y, float size, int fill, Paint.Align align, int alpha) {
+        if (alpha >= 255) { label(c, str, x, y, size, fill, align); return; }
+        if (alpha <= 0) return;
+        text.setTextAlign(align);
+        text.setTextSize(size);
+        text.setStyle(Paint.Style.STROKE);
+        text.setStrokeJoin(Paint.Join.ROUND);
+        text.setStrokeWidth(size * 0.2f);
+        text.setColor(A0); text.setAlpha(alpha);
+        c.drawText(str, x, y + size * 0.08f, text);
+        c.drawText(str, x, y, text);
+        text.setStyle(Paint.Style.FILL);
+        text.setColor(fill); text.setAlpha(alpha);
+        c.drawText(str, x, y, text);
+        text.setAlpha(255);
+        text.setTextAlign(Paint.Align.CENTER);
+    }
 
     /** Plain dark text for parchment surfaces. */
     void ink(Canvas c, String str, float x, float y, float size, int col, Paint.Align align) {
@@ -331,7 +360,7 @@ final class Art {
 
     // ================================================================= buttons
 
-    static final int GOLD = 0, WOOD = 1, DIM = 2;
+    static final int GOLD = 0, WOOD = 1, DIM = 2, PLANK = 3;   // WOOD picks plank or framed card by shape; PLANK is always a plank
 
     /** Pill/rounded button with a 3D lip. Returns [up, down] bitmaps; the face drops onto the lip when pressed. */
     Bitmap[] button(float w, float h, int style) {
@@ -340,7 +369,7 @@ final class Art {
 
     private Bitmap buttonState(float w, float h, int style, boolean down) {
         float pad = 1.2f * u, lip = h * 0.13f;
-        Bitmap src = style == GOLD ? uiGold : (h > w * 0.6f ? uiPanel : uiPlank);
+        Bitmap src = style == GOLD ? uiGold : style == PLANK || h <= w * 0.6f ? uiPlank : uiPanel;
         if (src != null) {
             Bitmap bm = Bitmap.createBitmap((int) (w + pad * 2), (int) (h + pad * 2), Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bm);
@@ -360,7 +389,7 @@ final class Art {
         float rad = Math.min(h * 0.38f, 3.2f * u);
         int top, mid, bot, lipC, gloss;
         if (style == GOLD) { top = A6; mid = A5; bot = 0xFFF29A1E; lipC = LIP; gloss = 110; }
-        else if (style == WOOD) { top = A4; mid = A3; bot = A2; lipC = A1; gloss = 60; }
+        else if (style == WOOD || style == PLANK) { top = A4; mid = A3; bot = A2; lipC = A1; gloss = 60; }
         else { top = 0xFF8C6448; mid = 0xFF6E4C36; bot = 0xFF5A3C2A; lipC = 0xFF3A2416; gloss = 30; }
         if (!down) { p.setShader(null); p.setColor(0xFF000000); p.setAlpha(100); r.set(0, lip + 0.6f * u, w, h + 0.6f * u); c.drawRoundRect(r, rad, rad, p); }
         // lip
@@ -479,6 +508,266 @@ final class Art {
         p.setShader(null); p.setColor(fill); p.setAlpha(255); c.drawPath(path, p);
         s.setColor(A0); s.setAlpha(255); s.setStrokeWidth(ro * 0.16f); c.drawPath(path, s);
     }
+
+    // ================================================================= 2.0 icon glyphs
+    // Each draws its painted asset when present, otherwise a simple outlined glyph in the kit's palette.
+    // "size" is the edge of the box the icon fits in, centred on (x, y).
+
+    private final Path path2 = new Path();
+
+    private boolean painted(Canvas c, Bitmap b, float x, float y, float size) {
+        if (b == null) return false;
+        icon(c, b, x, y, size);
+        return true;
+    }
+
+    private void outline(Canvas c, Path pth, float w) {
+        s.setShader(null); s.setColor(A0); s.setAlpha(255); s.setStrokeWidth(w);
+        c.drawPath(pth, s);
+    }
+
+    private void grad(float y0, float y1, int top, int bot) {
+        p.setColor(0xFFFFFFFF); p.setAlpha(255);
+        p.setShader(new LinearGradient(0, y0, 0, y1, top, bot, Shader.TileMode.CLAMP));
+    }
+
+    /** Amber gem: the premium currency. */
+    void gem(Canvas c, float x, float y, float size) {
+        if (painted(c, icGem, x, y, size)) return;
+        float r = size * 0.46f, t = y - r * 0.62f, g = y - r * 0.12f, b = y + r * 0.9f;
+        path.reset();
+        path.moveTo(x - r * 0.55f, t); path.lineTo(x + r * 0.55f, t); path.lineTo(x + r, g); path.lineTo(x, b); path.lineTo(x - r, g); path.close();
+        p.setShader(null); p.setColor(A5); p.setAlpha(255); c.drawPath(path, p);
+        path2.reset(); path2.moveTo(x - r * 0.55f, t); path2.lineTo(x + r * 0.55f, t); path2.lineTo(x + r, g); path2.lineTo(x - r, g); path2.close();
+        grad(t, g, A7, A6); c.drawPath(path2, p); p.setShader(null);
+        path2.reset(); path2.moveTo(x - r, g); path2.lineTo(x, g); path2.lineTo(x, b); path2.close();
+        p.setColor(A4); c.drawPath(path2, p);
+        s.setColor(A2); s.setAlpha(140); s.setStrokeWidth(r * 0.07f);
+        c.drawLine(x - r, g, x + r, g, s); c.drawLine(x - r * 0.2f, t, x - r * 0.45f, g, s); c.drawLine(x + r * 0.2f, t, x + r * 0.45f, g, s);
+        c.drawLine(x - r * 0.45f, g, x, b, s); c.drawLine(x + r * 0.45f, g, x, b, s);
+        outline(c, path, r * 0.13f);
+        p.setColor(0xFFFFFFFF); p.setAlpha(230); c.drawCircle(x - r * 0.38f, y - r * 0.4f, r * 0.11f, p);
+    }
+
+    /** Royal Jelly: the rebirth currency, a golden drop. */
+    void jellyDrop(Canvas c, float x, float y, float size) {
+        if (painted(c, icJelly, x, y, size)) return;
+        float r = size * 0.36f, cy = y + r * 0.35f;
+        path.reset();
+        path.moveTo(x, y - r * 1.25f);
+        path.cubicTo(x + r * 0.35f, cy - r * 1.1f, x + r, cy - r * 0.55f, x + r, cy);
+        path.cubicTo(x + r, cy + r * 0.62f, x + r * 0.5f, cy + r, x, cy + r);
+        path.cubicTo(x - r * 0.5f, cy + r, x - r, cy + r * 0.62f, x - r, cy);
+        path.cubicTo(x - r, cy - r * 0.55f, x - r * 0.35f, cy - r * 1.1f, x, y - r * 1.25f);
+        path.close();
+        grad(y - r, cy + r, A6, A4); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.16f);
+        p.setColor(A7); p.setAlpha(220);
+        r2.set(x - r * 0.62f, cy - r * 0.55f, x - r * 0.2f, cy + r * 0.1f); c.drawOval(r2, p);
+    }
+
+    /** Streak flame. */
+    void flame(Canvas c, float x, float y, float size) {
+        if (painted(c, icFlame, x, y, size)) return;
+        float r = size * 0.42f;
+        flamePath(path, x, y + r * 0.1f, r);
+        grad(y - r, y + r, A5, A4); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.13f);
+        flamePath(path2, x, y + r * 0.42f, r * 0.55f);
+        p.setColor(A7); p.setAlpha(255); c.drawPath(path2, p);
+    }
+
+    private static void flamePath(Path pth, float x, float y, float r) {
+        pth.reset();
+        pth.moveTo(x, y - r * 1.15f);
+        pth.cubicTo(x + r * 0.2f, y - r * 0.55f, x + r * 0.95f, y - r * 0.35f, x + r * 0.85f, y + r * 0.25f);
+        pth.cubicTo(x + r * 0.78f, y + r * 0.75f, x + r * 0.4f, y + r, x, y + r);
+        pth.cubicTo(x - r * 0.4f, y + r, x - r * 0.8f, y + r * 0.75f, x - r * 0.85f, y + r * 0.25f);
+        pth.cubicTo(x - r * 0.9f, y - r * 0.2f, x - r * 0.55f, y - r * 0.45f, x - r * 0.35f, y - r * 0.75f);
+        pth.cubicTo(x - r * 0.25f, y - r * 0.35f, x - r * 0.05f, y - r * 0.6f, x, y - r * 1.15f);
+        pth.close();
+    }
+
+    void gear(Canvas c, float x, float y, float size) {
+        if (painted(c, icGear, x, y, size)) return;
+        float r = size * 0.42f;
+        path.reset();
+        for (int i = 0; i < 16; i++) {
+            float a0 = (float) (i * Math.PI / 8), rr = i % 2 == 0 ? r : r * 0.78f;
+            float a1 = a0 + (float) (Math.PI / 8);
+            float px = x + (float) Math.cos(a0) * rr, py = y + (float) Math.sin(a0) * rr;
+            if (i == 0) path.moveTo(px, py); else path.lineTo(px, py);
+            path.lineTo(x + (float) Math.cos(a1 - 0.06f) * rr, y + (float) Math.sin(a1 - 0.06f) * rr);
+        }
+        path.close();
+        grad(y - r, y + r, A6, A4); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.12f);
+        p.setColor(A2); c.drawCircle(x, y, r * 0.3f, p);
+        s.setColor(A0); s.setStrokeWidth(r * 0.1f); c.drawCircle(x, y, r * 0.3f, s);
+    }
+
+    /** Quest scroll. */
+    void scroll(Canvas c, float x, float y, float size) {
+        if (painted(c, icQuests, x, y, size)) return;
+        float r = size * 0.42f;
+        r2.set(x - r * 0.62f, y - r * 0.7f, x + r * 0.62f, y + r * 0.7f);
+        grad(r2.top, r2.bottom, A7, 0xFFF2C47E); c.drawRect(r2, p); p.setShader(null);
+        s.setColor(A0); s.setStrokeWidth(r * 0.1f); c.drawRect(r2, s);
+        s.setColor(A3); s.setStrokeWidth(r * 0.09f);
+        for (int k = 0; k < 3; k++) { float ly = y - r * 0.3f + k * r * 0.3f; c.drawLine(x - r * 0.38f, ly, x + r * (k == 2 ? 0.1f : 0.38f), ly, s); }
+        for (int e = -1; e <= 1; e += 2) {
+            r2.set(x - r * 0.82f, y + e * r * 0.7f - r * 0.2f, x + r * 0.82f, y + e * r * 0.7f + r * 0.2f);
+            p.setColor(A4); c.drawRoundRect(r2, r * 0.2f, r * 0.2f, p);
+            s.setColor(A0); s.setStrokeWidth(r * 0.1f); c.drawRoundRect(r2, r * 0.2f, r * 0.2f, s);
+        }
+    }
+
+    /** Shop bag. */
+    void bag(Canvas c, float x, float y, float size) {
+        if (painted(c, icShop, x, y, size)) return;
+        float r = size * 0.42f;
+        s.setColor(A0); s.setStrokeWidth(r * 0.22f);
+        r2.set(x - r * 0.38f, y - r * 0.95f, x + r * 0.38f, y - r * 0.2f); c.drawArc(r2, 180, 180, false, s);
+        s.setColor(A5); s.setStrokeWidth(r * 0.1f); c.drawArc(r2, 180, 180, false, s);
+        path.reset();
+        path.moveTo(x - r * 0.7f, y - r * 0.5f); path.lineTo(x + r * 0.7f, y - r * 0.5f);
+        path.lineTo(x + r * 0.85f, y + r * 0.85f); path.lineTo(x - r * 0.85f, y + r * 0.85f); path.close();
+        grad(y - r * 0.5f, y + r * 0.85f, A5, A3); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.12f);
+        gem(c, x, y + r * 0.2f, r * 0.9f);
+    }
+
+    /** Crown (rebirth). */
+    void crown(Canvas c, float x, float y, float size) {
+        if (painted(c, icRebirth, x, y, size)) return;
+        float r = size * 0.45f;
+        path.reset();
+        path.moveTo(x - r * 0.8f, y + r * 0.55f); path.lineTo(x - r * 0.95f, y - r * 0.45f); path.lineTo(x - r * 0.45f, y);
+        path.lineTo(x, y - r * 0.8f); path.lineTo(x + r * 0.45f, y); path.lineTo(x + r * 0.95f, y - r * 0.45f);
+        path.lineTo(x + r * 0.8f, y + r * 0.55f); path.close();
+        grad(y - r * 0.8f, y + r * 0.55f, A7, A5); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.12f);
+        for (int k = -1; k <= 1; k++) {
+            p.setColor(A0); c.drawCircle(x + k * r * 0.45f, y + r * 0.25f, r * 0.12f, p);
+            p.setColor(A4); c.drawCircle(x + k * r * 0.45f, y + r * 0.25f, r * 0.08f, p);
+        }
+    }
+
+    void check(Canvas c, float x, float y, float size) {
+        if (painted(c, icCheck, x, y, size)) return;
+        float r = size * 0.42f;
+        path.reset(); path.moveTo(x - r * 0.65f, y); path.lineTo(x - r * 0.15f, y + r * 0.5f); path.lineTo(x + r * 0.7f, y - r * 0.55f);
+        s.setColor(A0); s.setAlpha(255); s.setStrokeWidth(r * 0.48f); c.drawPath(path, s);
+        s.setColor(A6); s.setStrokeWidth(r * 0.26f); c.drawPath(path, s);
+    }
+
+    /** Freeze-spell bubble. */
+    void bubble(Canvas c, float x, float y, float size) {
+        if (painted(c, icBubble, x, y, size)) return;
+        float r = size * 0.4f;
+        p.setShader(null); p.setColor(A7); p.setAlpha(90); c.drawCircle(x, y, r, p);
+        s.setColor(A0); s.setAlpha(255); s.setStrokeWidth(r * 0.2f); c.drawCircle(x, y, r, s);
+        s.setColor(A7); s.setStrokeWidth(r * 0.1f); c.drawCircle(x, y, r, s);
+        p.setColor(0xFFFFFFFF); p.setAlpha(230); c.drawCircle(x - r * 0.38f, y - r * 0.38f, r * 0.2f, p);
+        p.setAlpha(170); c.drawCircle(x + r * 0.3f, y + r * 0.35f, r * 0.08f, p);
+    }
+
+    void music(Canvas c, float x, float y, float size, boolean on) {
+        if (painted(c, icMusic, x, y, size)) { if (!on) slash(c, x, y, size * 0.42f); return; }
+        float r = size * 0.42f;
+        path.reset();
+        path.moveTo(x - r * 0.35f, y + r * 0.45f); path.lineTo(x - r * 0.35f, y - r * 0.7f); path.lineTo(x + r * 0.6f, y - r * 0.9f);
+        path.lineTo(x + r * 0.6f, y + r * 0.25f);
+        s.setColor(A0); s.setStrokeWidth(r * 0.3f); c.drawPath(path, s);
+        s.setColor(A7); s.setStrokeWidth(r * 0.14f); c.drawPath(path, s);
+        for (float hx : new float[]{x - r * 0.55f, x + r * 0.4f}) {
+            float hy = hx < x ? y + r * 0.5f : y + r * 0.3f;
+            r2.set(hx - r * 0.3f, hy - r * 0.22f, hx + r * 0.3f, hy + r * 0.22f);
+            p.setShader(null); p.setColor(A7); p.setAlpha(255); c.drawOval(r2, p);
+            s.setColor(A0); s.setStrokeWidth(r * 0.1f); c.drawOval(r2, s);
+        }
+        if (!on) slash(c, x, y, r);
+    }
+
+    void haptics(Canvas c, float x, float y, float size, boolean on) {
+        if (painted(c, icHaptics, x, y, size)) { if (!on) slash(c, x, y, size * 0.42f); return; }
+        float r = size * 0.42f;
+        r2.set(x - r * 0.35f, y - r * 0.7f, x + r * 0.35f, y + r * 0.7f);
+        p.setShader(null); p.setColor(A5); p.setAlpha(255); c.drawRoundRect(r2, r * 0.15f, r * 0.15f, p);
+        s.setColor(A0); s.setStrokeWidth(r * 0.12f); c.drawRoundRect(r2, r * 0.15f, r * 0.15f, s);
+        p.setColor(A1); r2.set(x - r * 0.22f, y - r * 0.52f, x + r * 0.22f, y + r * 0.38f); c.drawRect(r2, p);
+        s.setColor(A7); s.setStrokeWidth(r * 0.1f);
+        for (int e = -1; e <= 1; e += 2)
+            for (int k = 0; k < 2; k++) { float lx = x + e * r * (0.58f + k * 0.22f); c.drawLine(lx, y - r * (0.3f - k * 0.08f), lx, y + r * (0.3f - k * 0.08f), s); }
+        if (!on) slash(c, x, y, r);
+    }
+
+    void bell(Canvas c, float x, float y, float size, boolean on) {
+        if (painted(c, icBell, x, y, size)) { if (!on) slash(c, x, y, size * 0.42f); return; }
+        float r = size * 0.42f;
+        path.reset();
+        path.moveTo(x - r * 0.75f, y + r * 0.45f);
+        path.cubicTo(x - r * 0.55f, y + r * 0.3f, x - r * 0.6f, y - r * 0.75f, x, y - r * 0.75f);
+        path.cubicTo(x + r * 0.6f, y - r * 0.75f, x + r * 0.55f, y + r * 0.3f, x + r * 0.75f, y + r * 0.45f);
+        path.close();
+        grad(y - r * 0.75f, y + r * 0.45f, A6, A4); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.12f);
+        p.setColor(A0); c.drawCircle(x, y + r * 0.62f, r * 0.2f, p);
+        p.setColor(A5); c.drawCircle(x, y + r * 0.6f, r * 0.12f, p);
+        if (!on) slash(c, x, y, r);
+    }
+
+    void shakeIcon(Canvas c, float x, float y, float size, boolean on) {
+        if (painted(c, icShake, x, y, size)) { if (!on) slash(c, x, y, size * 0.42f); return; }
+        float r = size * 0.42f;
+        r2.set(x - r * 0.5f, y - r * 0.42f, x + r * 0.5f, y + r * 0.42f);
+        p.setShader(null); p.setColor(A5); p.setAlpha(255); c.drawRoundRect(r2, r * 0.12f, r * 0.12f, p);
+        s.setColor(A0); s.setStrokeWidth(r * 0.12f); c.drawRoundRect(r2, r * 0.12f, r * 0.12f, s);
+        p.setColor(A2); c.drawCircle(x, y, r * 0.2f, p);
+        s.setColor(A7); s.setStrokeWidth(r * 0.1f);
+        for (int e = -1; e <= 1; e += 2) { c.drawLine(x + e * r * 0.7f, y - r * 0.35f, x + e * r * 0.82f, y, s); c.drawLine(x + e * r * 0.82f, y, x + e * r * 0.7f, y + r * 0.35f, s); }
+        if (!on) slash(c, x, y, r);
+    }
+
+    private void slash(Canvas c, float x, float y, float r) {
+        s.setColor(A0); s.setAlpha(255); s.setStrokeWidth(r * 0.3f); c.drawLine(x - r * 0.75f, y - r * 0.75f, x + r * 0.75f, y + r * 0.75f, s);
+        s.setColor(0xFFE0583A); s.setStrokeWidth(r * 0.15f); c.drawLine(x - r * 0.75f, y - r * 0.75f, x + r * 0.75f, y + r * 0.75f, s);
+    }
+
+    /** Coin pouch (lucky drops, gem jar). */
+    void pouch(Canvas c, float x, float y, float size) {
+        if (painted(c, icPouch, x, y, size)) return;
+        float r = size * 0.42f;
+        path.reset();
+        path.moveTo(x - r * 0.3f, y - r * 0.45f);
+        path.cubicTo(x - r * 0.95f, y - r * 0.2f, x - r, y + r * 0.85f, x, y + r * 0.85f);
+        path.cubicTo(x + r, y + r * 0.85f, x + r * 0.95f, y - r * 0.2f, x + r * 0.3f, y - r * 0.45f);
+        path.close();
+        grad(y - r * 0.45f, y + r * 0.85f, A4, A2); c.drawPath(path, p); p.setShader(null);
+        outline(c, path, r * 0.12f);
+        path2.reset(); path2.moveTo(x - r * 0.3f, y - r * 0.45f); path2.lineTo(x - r * 0.5f, y - r * 0.85f);
+        path2.lineTo(x + r * 0.5f, y - r * 0.85f); path2.lineTo(x + r * 0.3f, y - r * 0.45f); path2.close();
+        p.setColor(A3); c.drawPath(path2, p); outline(c, path2, r * 0.1f);
+        coin(c, x, y + r * 0.25f, r * 0.38f);
+    }
+
+    /** Daily gift box. */
+    void gift(Canvas c, float x, float y, float size) {
+        if (painted(c, icGift, x, y, size)) return;
+        float r = size * 0.42f;
+        r2.set(x - r * 0.8f, y - r * 0.25f, x + r * 0.8f, y + r * 0.85f);
+        grad(r2.top, r2.bottom, A4, A2); c.drawRect(r2, p); p.setShader(null);
+        s.setColor(A0); s.setStrokeWidth(r * 0.12f); c.drawRect(r2, s);
+        r2.set(x - r * 0.9f, y - r * 0.5f, x + r * 0.9f, y - r * 0.2f);
+        p.setColor(A3); c.drawRect(r2, p); c.drawRect(r2, s);
+        p.setColor(A6); r2.set(x - r * 0.15f, y - r * 0.5f, x + r * 0.15f, y + r * 0.85f); c.drawRect(r2, p); c.drawRect(r2, s);
+        for (int e = -1; e <= 1; e += 2) {
+            r2.set(x + (e < 0 ? -r * 0.6f : 0), y - r * 0.9f, x + (e < 0 ? 0 : r * 0.6f), y - r * 0.5f);
+            p.setColor(A6); c.drawOval(r2, p); s.setStrokeWidth(r * 0.1f); c.drawOval(r2, s);
+        }
+    }
+
+    private final RectF r2 = new RectF();
 
     /** Tree-stump tower pad. */
     Bitmap pad(float w) {
