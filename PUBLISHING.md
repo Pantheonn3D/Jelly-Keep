@@ -2,13 +2,26 @@
 
 ## Two builds
 
+### Ready-made builds
+Signed builds made in the cloud session on 2026-10-24, all version 2.0 (code 9):
+
+| File | What it is | Use it for |
+|---|---|---|
+| `JellyKeep-2.0-test.apk` | test build (simulated ads, test purchases) | your phone: play the whole game |
+| `JellyKeep-2.0-test.aab` | the same, as a bundle | not needed for Play |
+| `JellyKeep-2.0-live-testads.apk` | live build with Google's **test** ad IDs | your phone: real AdMob test ads and the consent flow. Purchases only work when installed from Play. |
+| `JellyKeep-2.0-live-testads.aab` | the same, as a bundle | an internal or closed testing track (test ads, real billing for license testers) |
+
+For **production**, rebuild the live variant with your real AdMob IDs and bump the version, because versionCode 9 is used up once uploaded.
+
+### Building them yourself
 | | Test build (default) | Live build |
 |---|---|---|
 | Command | `./gradlew assembleRelease bundleRelease` | `./gradlew -Plive=true bundleRelease` (plus the ad IDs below) |
 | Ads | a clearly labelled **simulated** ad drawn by the game | AdMob rewarded + interstitial, consent form via Google UMP |
-| Purchases | in-game "Test purchase" confirm, nothing charged | Google Play Billing 8 |
-| Third-party SDKs | none | play-services-ads, user-messaging-platform, billing, review |
-| Use it for | your phone, the closed test | production |
+| Purchases | in-game "Test purchase" confirm, nothing charged | Google Play Billing 9 |
+| Third-party SDKs | none | play-services-ads 25.5.0, user-messaging-platform 4.0.0, billing 9.1.0, review 2.0.2 |
+| Use it for | your phone, quick checks | the closed test (Google's test ad IDs), then production (your real IDs) |
 
 **Never ship the test build to production.** Its rewards and purchases are free.
 
@@ -54,7 +67,7 @@ Create these as **one-time products**. Use the IDs exactly as written, because t
 
 Kept-forever items are acknowledged and come back automatically on reinstall. Settings → "Restore purchases" also re-applies them. Gem packs are consumed and granted once Play confirms.
 
-Play's rule: from **Aug 31, 2026**, new apps and updates must use Billing Library 8 or later. The game uses 8.0.0.
+Play's rule: from **Aug 31, 2026**, new apps and updates must use Billing Library 8 or later. The game uses 9.1.0, so it should also meet the next deadline.
 
 ### 3. Privacy policy
 Host the text below at a public URL, for example on Google Sites or GitHub Pages. Then put the URL in `app/src/main/res/values/res.xml`:
@@ -102,10 +115,16 @@ Settings shows a "Privacy policy" link once this string is set.
 - **Permissions:**
   - **VIBRATE** (haptics, can be switched off)
   - **POST_NOTIFICATIONS** (opt-in reminders, asked in context)
-  - **INTERNET**, **ACCESS_NETWORK_STATE**, **AD_ID** and **BILLING** are merged in by the SDKs in the live build only
+  - Live build only, merged in by the SDKs:
+    - **INTERNET**, **ACCESS_NETWORK_STATE**
+    - **AD_ID** and **ACCESS_ADSERVICES_AD_ID / _ATTRIBUTION / _TOPICS** (Android's Privacy Sandbox APIs, used by AdMob)
+    - **BILLING**
+    - **WAKE_LOCK** and **FOREGROUND_SERVICE**, from WorkManager inside the AdMob SDK. The game never starts a foreground service, and no foreground-service type is declared.
 
 ### 5. Testing and release
 1. Build the live variant and install it on your phone. With test IDs you'll see Google test ads.
+   - **In the EU before your own AdMob app exists:** the consent step uses Google's sample app ID, which may have no consent message. The ▶ buttons may then say "No ad available". Once your own app ID and GDPR message are published, the consent form shows and ads load.
+   - If an ad doesn't appear, `adb logcat -s JellyKeep` prints the consent, ad-load or store error.
    - Check that the consent form appears when you're in the EU, or use a VPN or AdMob's test-geography setting.
    - Check that a rewarded ad pays, a "Test purchase" no longer appears, and a real purchase flow opens.
 2. Add yourself as a **license tester** in Play Console so purchases are free test purchases.

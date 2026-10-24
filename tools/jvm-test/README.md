@@ -33,9 +33,9 @@ Robolectric depends on `androidx.test:monitor`, which is published only on Googl
 tools/jvm-test/check-live.sh        # after run.sh has run once
 ```
 
-This script compiles `app/src/main` with `app/src/live` (AdMob, UMP, Play Billing 8, in-app review) against `live-api-stubs/`. Those are compile-only stand-ins for exactly the API surface the live code uses, written from Google's documented signatures.
+This script compiles `app/src/main` with `app/src/live` (AdMob, UMP, Play Billing, in-app review) against `live-api-stubs/`. Those are compile-only stand-ins for exactly the API surface the live code uses, written from Google's documented signatures.
 
-It catches typos, missing imports and wrong listener shapes. It does not catch drift in the real SDKs. The real check is Android Studio's `./gradlew -Plive=true bundleRelease`.
+It catches typos, missing imports and wrong listener shapes. It does not catch drift in the real SDKs. The real check is `./gradlew -Plive=true bundleRelease`, which also works in the cloud sandbox whenever Google's hosts are allowed.
 
 ## Probes and seeded balance runs
 

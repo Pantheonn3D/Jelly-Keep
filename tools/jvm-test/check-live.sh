@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compiles the live build's sources (app/src/main + app/src/live) against hand-written stand-ins for the
-# AdMob / UMP / Play Billing 8 / in-app review APIs (live-api-stubs/, written from Google's documented signatures).
+# AdMob / UMP / Play Billing / in-app review APIs (live-api-stubs/, written from Google's documented signatures).
 # For sandboxes where Google Maven is blocked: it catches typos, missing imports and wrong listener shapes, but it is
 # not the real SDK. Android Studio's `-Plive=true` build is the real check. Needs run.sh to have run once (R.java + jar).
 set -euo pipefail

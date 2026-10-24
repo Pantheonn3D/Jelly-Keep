@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 
 import com.google.android.gms.ads.AdError;
 import com.google.android.gms.ads.AdRequest;
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * then the SDK starts and keeps one rewarded and one interstitial ad loaded, retrying with backoff on no-fill.
  */
 final class AdMobAds implements Ads {
+    private static final String TAG = "JellyKeep";        // adb logcat -s JellyKeep: why an ad didn't show
     private final Activity act;
     private final Host host;
     private final ConsentInformation consent;
@@ -44,13 +46,17 @@ final class AdMobAds implements Ads {
         consent = UserMessagingPlatform.getConsentInformation(act);
         ConsentRequestParameters params = new ConsentRequestParameters.Builder().build();
         consent.requestConsentInfoUpdate(act, params,
-                () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(act, formError -> { consentDone = true; start(); }),
-                requestError -> { consentDone = true; start(); });
+                () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(act, formError -> {
+                    if (formError != null) Log.w(TAG, "consent form: " + formError.getMessage());
+                    consentDone = true; start();
+                }),
+                requestError -> { Log.w(TAG, "consent info: " + requestError.getMessage()); consentDone = true; start(); });
         if (consent.canRequestAds()) start();          // consent from an earlier session: no need to wait
     }
 
     private void start() {
-        if (!consent.canRequestAds() || !started.compareAndSet(false, true)) return;
+        if (!consent.canRequestAds()) { Log.i(TAG, "no ads: consent doesn't allow them yet"); return; }
+        if (!started.compareAndSet(false, true)) return;
         MobileAds.setRequestConfiguration(new RequestConfiguration.Builder()
                 .setMaxAdContentRating(RequestConfiguration.MAX_AD_CONTENT_RATING_T).build());
         new Thread(() -> MobileAds.initialize(act, status -> main.post(() -> { load(); loadInterstitial(); }))).start();
@@ -68,7 +74,7 @@ final class AdMobAds implements Ads {
         loadingR = true;
         RewardedAd.load(act, act.getString(R.string.admob_rewarded), new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
             @Override public void onAdLoaded(RewardedAd ad) { rewarded = ad; loadingR = false; retries = 0; loadedAt = SystemClock.elapsedRealtime(); }
-            @Override public void onAdFailedToLoad(LoadAdError error) { loadingR = false; retryLater(); }
+            @Override public void onAdFailedToLoad(LoadAdError error) { Log.w(TAG, "rewarded: " + error); loadingR = false; retryLater(); }
         });
     }
 
@@ -87,7 +93,7 @@ final class AdMobAds implements Ads {
             // the reward lands once the player is back in the keep; some networks report it just after closing
             @Override public void onAdDismissedFullScreenContent() { main.postDelayed(settle, earned[0] ? 0 : 600); load(); }
 
-            @Override public void onAdFailedToShowFullScreenContent(AdError error) { main.post(settle); load(); }
+            @Override public void onAdFailedToShowFullScreenContent(AdError error) { Log.w(TAG, "rewarded show: " + error); main.post(settle); load(); }
         });
         ad.show(act, reward -> earned[0] = true);
     }
@@ -97,7 +103,7 @@ final class AdMobAds implements Ads {
         loadingI = true;
         InterstitialAd.load(act, act.getString(R.string.admob_interstitial), new AdRequest.Builder().build(), new InterstitialAdLoadCallback() {
             @Override public void onAdLoaded(InterstitialAd ad) { inter = ad; loadingI = false; }
-            @Override public void onAdFailedToLoad(LoadAdError error) { loadingI = false; }
+            @Override public void onAdFailedToLoad(LoadAdError error) { Log.w(TAG, "interstitial: " + error); loadingI = false; }
         });
     }
 

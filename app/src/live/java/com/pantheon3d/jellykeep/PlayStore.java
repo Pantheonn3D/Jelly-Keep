@@ -3,6 +3,7 @@ package com.pantheon3d.jellykeep;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import com.android.billingclient.api.AcknowledgePurchaseParams;
 import com.android.billingclient.api.BillingClient;
@@ -24,7 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 
 /**
- * Google Play Billing (library 8). All products are one-time "in-app products": Royal Pass, Starter Pack and Golden
+ * Google Play Billing (library 8 API, built against 9.1). All products are one-time "in-app products": Royal Pass, Starter Pack and Golden
  * Spoon are acknowledged and kept; gem packs and the Gem Jar are consumed. Owned items are re-applied at every start,
  * so a reinstall restores them; consumables are granted only once Play confirms the consume.
  */
@@ -51,7 +52,10 @@ final class PlayStore implements Store, PurchasesUpdatedListener {
     private void connect() {
         client.startConnection(new BillingClientStateListener() {
             @Override public void onBillingSetupFinished(BillingResult result) {
-                if (result.getResponseCode() != BillingClient.BillingResponseCode.OK) return;
+                if (result.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                    Log.w("JellyKeep", "billing setup: " + result.getResponseCode() + " " + result.getDebugMessage());
+                    return;
+                }
                 ready = true;
                 queryProducts();
                 queryOwned(false);

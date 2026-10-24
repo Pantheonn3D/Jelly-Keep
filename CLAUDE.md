@@ -20,7 +20,9 @@ You are continuing work on **Jelly Keep**, an Android idle/clicker tower defense
   - It uses a clearly labelled simulated ad and an in-game "Test purchase" confirm.
   - Fine for your phone and the closed test. **Never use it for production**, because every reward is free.
 - **Live build:** `./gradlew -Plive=true bundleRelease`
-  - Compiles `app/src/live/java` instead of `app/src/stub/java`: AdMob + UMP consent, Play Billing 8, Play in-app review.
+  - Compiles `app/src/live/java` instead of `app/src/stub/java`: AdMob 25.5.0 + UMP 4.0.0 consent, Play Billing 9.1.0, Play in-app review 2.0.2.
+  - Verified on 2026-10-24: it compiles, shrinks with R8, passes lint and signs against the real SDKs. It has **not** run on a device yet (the cloud container has no KVM for an emulator).
+  - Debugging on a phone: `adb logcat -s JellyKeep` shows why consent, an ad or the store failed.
   - Ad IDs come from `-PadmobAppId`, `-PadmobRewarded` and `-PadmobInterstitial` (keep them in `~/.gradle/gradle.properties`). Without them it uses Google's test IDs.
   - All steps are in `PUBLISHING.md`.
 - **Outputs:**
@@ -31,12 +33,24 @@ You are continuing work on **Jelly Keep**, an Android idle/clicker tower defense
 - **Package:** `com.pantheon3d.jellykeep`. App name "Jelly Keep".
 
 ### Claude's cloud sandbox
-`dl.google.com` (Google Maven and the SDK) is blocked there, so AGP can't build. Two tools stand in:
+Jens allowed all network domains for this cloud environment on 2026-10-24, so real AGP builds work there. A fresh container needs the SDK first:
+```
+mkdir -p /opt/android-sdk/cmdline-tools && cd /tmp
+curl -sSO https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip    # newest in repository2-3.xml
+unzip -q commandlinetools-linux-*_latest.zip && mv cmdline-tools /opt/android-sdk/cmdline-tools/latest
+yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk --licenses
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+echo "sdk.dir=/opt/android-sdk" > local.properties
+```
+- Release builds also need `jellykeep-upload.jks` + `keystore.properties` at the repo root. Both are gitignored and must never be committed. They come from Jens's source zip; ask him if they're missing.
+- There is no KVM, so no emulator. Device testing is Jens's.
+
+If a sandbox blocks `dl.google.com` again, two tools stand in:
 - **`tools/jvm-test/run.sh`** runs the real `app/src/test` suite on a plain JVM.
   - It uses Robolectric 4.17 with native graphics, and gets aapt2 and framework-res from Ubuntu packages and the framework jar from Maven Central.
   - Screenshots are real Skia renders. See `tools/jvm-test/README.md`.
 - **`tools/jvm-test/check-live.sh`** compiles `src/main` + `src/live` against `tools/jvm-test/live-api-stubs/`.
-  - Those are hand-written stand-ins for the AdMob, UMP, Billing 8 and Review APIs, copied from Google's documented signatures.
+  - Those are hand-written stand-ins for the AdMob, UMP, Billing and Review APIs the live code calls, copied from Google's documented signatures.
   - It catches typos, missing imports and wrong listener shapes. It does not catch real API drift: Android Studio's `-Plive=true` build is the real check.
 
 ## Code map (`app/src/main/java/com/pantheon3d/jellykeep/`)
@@ -130,14 +144,19 @@ Three bots (`PlayTest.bot`) play the real game loop:
 - They retreat on defeat, and rebirth after stalling for 4 minutes past wave 30.
 - The RNG is seeded, so a change shows up as a different curve rather than noise.
 
-Run best wave over time:
-
-| Bot | 5 min | 10 | 15 | 20 | 25 | 30 | First rebirth | Best at 60 min | Defeats |
-|---|---|---|---|---|---|---|---|---|---|
-| Tapper: 3 taps/s, no ads, no gems | 12 | 20 | 26 | 30 | 36 | 39 | 30.5 min, at 39 (+9 RJ) | 50 | 13 |
-| Ads: 2 taps/s, boost always on, every ad, gems into the Vault | 17 | 28 | 38 | 45 | 50 | 56 | 31.6 min, at 56 (+36 RJ) | 74 | 9 (+4 revives) |
-| Idle: no taps | 6 | 10 | 11 | 13 | 14 | 17 | — | 25 | 26 |
-
+Run best wave over time (identical in AGP and in `tools/jvm-test`, run after run):
+- **Tapper** (3 taps/s, no ads, no gems):
+  - Waves 15 / 24 / 30 at 5 / 10 / 15 min, then a rebirth at 18.8 min (+5 RJ).
+  - The second run is back at 30 by 35 min and reaches 41 at 45 min and 48 at 55 min, then rebirths at 56.9 min (+19 RJ).
+  - 13 defeats.
+- **Ads** (2 taps/s, boost always on, every ad, gems into the Vault):
+  - Waves 17 / 28 / 39 / 45 / 51 / 57 at 5–30 min, then a rebirth at 35.1 min at wave 59 (+46 RJ).
+  - The second run passes 59 at about 55 min and ends at 73.
+  - 5 defeats + 4 revives.
+- **Idle** (no taps): waves 6 / 9 / 10 / 10 / 14 / 16 at 5–30 min, best 20. It lives on the push/retreat loop, with 30 defeats.
+- **Reproducibility:**
+  - `bot()` seeds `Game.rnd`. Anything gated by the wall clock (sound rate limits, `meta.now()`) must never draw from `rnd`. Sound pitch uses `sndRnd` for that reason.
+  - Before that fix, two runs of the same code gave different curves.
 - **Why the HP ramp exists:**
   - Banker pay grows with both the wave and its own level. So income per wave grows about as fast as the cost of the upgrades needed to beat a flat 17%-per-wave HP curve.
   - Without the ramp, the ads bot's run after a rebirth climbed 7–12 waves every 5 minutes with no walls. Its next rebirth would have paid ~19× the first.
@@ -148,10 +167,12 @@ Run best wave over time:
   - The tapper and idle curves don't change, because the ramp only starts at wave 40.
 - **Long-term shape:** past ~wave 80 each wave adds 30–40% HP, so each rebirth buys a few waves. A second prestige layer is the natural next step for players who get there.
 - **Guards:** `balanceWithAds` asserts best ≤ 85, so a future buff can't quietly bring the runaway back. `balance` asserts 25 ≤ best ≤ 80.
-- **Re-run after every economy change:** `tools/jvm-test/run.sh --tests '*PlayTest.balance*'`. The curves are in `tools/jvm-test/build/test-results/test/TEST-com.pantheon3d.jellykeep.PlayTest.xml`.
+- **Re-run after every economy change:** `./gradlew testReleaseUnitTest --tests '*PlayTest.balance*'`. The curves are in the test-results XML (`app/build/test-results/testReleaseUnitTest/`). Without the SDK, use `tools/jvm-test/run.sh --tests '*PlayTest.balance*'`; its curves are in `tools/jvm-test/build/test-results/test/`.
 
 ## Tests
-- On a machine with the SDK, run `./gradlew testReleaseUnitTest`. In the cloud sandbox, run `tools/jvm-test/run.sh`, optionally with `--tests '*PlayTest.balance*' -PshowOutput`.
+- Run `./gradlew testReleaseUnitTest` wherever the SDK is installed, including the cloud sandbox now.
+  - Robolectric downloads its Android runtime jar from Maven Central on the first run. A one-off "Failed to fetch maven artifact" is a network blip, so run it again.
+  - `tools/jvm-test/run.sh` is the fallback when Google's hosts are blocked; it gives the same results.
 - **`MetaTest`:** vault costs and effects, patron ladder, gift streak with a fake clock, quests, rebirth math, save/load, v1.6 migration.
 - **`PlayTest`:**
   - `firstSession`, `menusAndScreens`, `battleSystems`, `auditFixes` and `adsAndPurchases` drive real touches and write every screen to `app/build/shots/`. Look at them.
@@ -194,10 +215,10 @@ Match the attached reference style exactly: hand-painted 2D mobile game art, sof
    - a tablet or foldable, for the letterboxed stage
 2. **Go live:** follow `PUBLISHING.md`.
    - AdMob units and privacy messages, Play products, privacy policy URL (`privacy_url` in `res/values/res.xml`), Data safety, the `-Plive=true` build tested on a phone, then the closed test.
-   - The live code has never been compiled against the real SDKs, so expect to fix small API mismatches in Android Studio on the first `-Plive=true` build.
+   - The live code compiles against the real SDKs but has never run on a device. First test: Google test ads load, a rewarded ad pays, the consent form shows in the EU, and a purchase sheet opens from an internal-testing install.
 3. **Art and audio:** the two image batches and the sound batches in `docs/art-and-audio-requests.md`.
 4. **Later (out of scope so far):** cloud save (Play Games), leaderboards, localization, events, analytics, new towers and enemies (they need art), a second prestige layer for players past ~wave 100.
-5. **Dependencies:** Billing 8.0.0 meets Play's "Billing 8+ by Aug 31, 2026" rule. Move to 9.x when Play sets the next deadline; 9 pulls in AndroidX core 1.9+. GMA 24.4.0 / UMP 3.1.0 / Review 2.0.2 are pinned; newer ones exist (GMA 25.x).
+5. **Dependencies:** the live build uses the newest SDKs as of 2026-10-24: GMA 25.5.0, UMP 4.0.0, Billing 9.1.0 and Review 2.0.2. Billing 9 already meets Play's current "Billing 8+" rule and the likely next one. Check Google Maven for newer versions before each release.
 6. **Known limits:**
    - No server-side purchase verification.
    - Refunds don't revoke kept-forever items.

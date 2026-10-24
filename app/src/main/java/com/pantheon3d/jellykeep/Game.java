@@ -106,6 +106,8 @@ public class Game extends View implements Ads.Host, Store.Host {
     private final SharedPreferences prefs;
     private final Vibrator vib;
     final Random rnd = new Random();
+    private final Random sndRnd = new Random();   // sound pitch only: sounds are rate-limited by wall clock, so they
+                                                  // must not draw from rnd or the simulation stops being reproducible
 
     // =============================================================== saved run state
     double coins, coinRate;
@@ -850,7 +852,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         trauma = Math.min(1, trauma + (e.type == BOSS ? 0.6f : 0.15f));
         flash(I4, e.type == BOSS ? 0.5f : 0.22f);
         long now = System.currentTimeMillis();
-        if (now - lastHitSnd > 120) { lastHitSnd = now; if (!sfx.bank("king_hurt", 0.6f, 0.08f, 0)) sfx.play(sfx.hurt, 0.6f, 0.9f + rnd.nextFloat() * 0.2f); haptic(HapticFeedbackConstants.KEYBOARD_TAP); }
+        if (now - lastHitSnd > 120) { lastHitSnd = now; if (!sfx.bank("king_hurt", 0.6f, 0.08f, 0)) sfx.play(sfx.hurt, 0.6f, 0.9f + sndRnd.nextFloat() * 0.2f); haptic(HapticFeedbackConstants.KEYBOARD_TAP); }
         burst(baseX + (e.x - baseX) * 0.5f, baseY - baseR * 0.4f + (e.y - baseY) * 0.4f, 5, A5, 0.8f);
         if (baseHp <= 0) { baseHp = 0; defeat(); }
     }
@@ -897,7 +899,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             cue("lucky_pouch", sfx.star, 0.5f, 1.3f);
         }
         long now = System.currentTimeMillis();
-        if (now - lastDieSnd > 50) { lastDieSnd = now; if (!sfx.bank("enemy_die", 0.55f, 0.12f, 0)) sfx.play(sfx.die, 0.55f, 0.85f + rnd.nextFloat() * 0.35f); }
+        if (now - lastDieSnd > 50) { lastDieSnd = now; if (!sfx.bank("enemy_die", 0.55f, 0.12f, 0)) sfx.play(sfx.die, 0.55f, 0.85f + sndRnd.nextFloat() * 0.35f); }
         if (e.type == BRUTE || e.type == BOSS) {
             hitStop = e.type == BOSS ? 0.14f : 0.05f;
             trauma = Math.min(1, trauma + (e.type == BOSS ? 0.9f : 0.3f));
@@ -971,7 +973,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         float dx = t.x - baseX, dy = t.y - baseY, dist = (float) Math.max(1, Math.hypot(dx, dy));
         ring(t.x, cy(t), A6, 0.5f);
         hitNumber(t.x, cy(t) - t.r, d);
-        if (!sfx.bank("king_bonk", 0.45f, 0.1f, 0)) sfx.play(sfx.bonk, 0.4f, 0.9f + rnd.nextFloat() * 0.2f);
+        if (!sfx.bank("king_bonk", 0.45f, 0.1f, 0)) sfx.play(sfx.bonk, 0.4f, 0.9f + sndRnd.nextFloat() * 0.2f);
         damage(t, d, dx / dist * 70 * u, dy / dist * 70 * u);
     }
 
@@ -1046,7 +1048,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             Shot s = new Shot(0, sx + tFace[i] * 5 * u, sy + 1.5f * u);
             s.tg = tg; s.dmg = towerDmg(i);
             shots.add(s);
-            if (!sfx.bank("popper_shoot", 0.45f, 0.07f, 45) && now - lastShootSnd > 40) { lastShootSnd = now; sfx.play(sfx.shoot, 0.35f, 0.9f + rnd.nextFloat() * 0.3f); }
+            if (!sfx.bank("popper_shoot", 0.45f, 0.07f, 45) && now - lastShootSnd > 40) { lastShootSnd = now; sfx.play(sfx.shoot, 0.35f, 0.9f + sndRnd.nextFloat() * 0.3f); }
         } else if (t == SPARKLER) {
             tSqV[i] -= 3;
             float side = rnd.nextBoolean() ? 1 : -1;                 // alternates hands
@@ -1071,7 +1073,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             s.tx = tg.x; s.ty = tg.y;
             s.ox = s.x; s.oy = s.y; s.dur = t == BOMB ? 1.05f : 0.9f; s.dmg = towerDmg(i);
             shots.add(s);
-            if (!sfx.bank("mortar_launch", 0.6f, 0.06f, 60, t == BOMB ? 0.75f : 1f)) sfx.play(sfx.lob, 0.5f, 0.9f + rnd.nextFloat() * 0.2f);
+            if (!sfx.bank("mortar_launch", 0.6f, 0.06f, 60, t == BOMB ? 0.75f : 1f)) sfx.play(sfx.lob, 0.5f, 0.9f + sndRnd.nextFloat() * 0.2f);
         } else if (t == MAGE) {                                         // bubble pulse: slows everything around
             tSqV[i] -= 6;
             float rr = T_RANGE[MAGE] * u;
@@ -1161,7 +1163,7 @@ public class Game extends View implements Ads.Host, Store.Host {
                     float rr = 8 * u;
                     puddles.add(new float[]{s.tx, s.ty, rr, 2.2f});
                     for (int n = 0; n < 12; n++) { P g = add(GOO, s.tx, s.ty); if (g == null) break; float a = rnd.nextFloat() * 6.28f, v = (20 + rnd.nextFloat() * 30) * u; g.vx = (float) Math.cos(a) * v; g.vy = (float) Math.sin(a) * v - 25 * u; g.max = 0.6f; g.sz = (0.6f + rnd.nextFloat()) * u; }
-                    if (!sfx.bank("goo_splat", 0.7f, 0.08f, 50)) sfx.play(sfx.splat, 0.5f, 1f + rnd.nextFloat() * 0.2f);
+                    if (!sfx.bank("goo_splat", 0.7f, 0.08f, 50)) sfx.play(sfx.splat, 0.5f, 1f + sndRnd.nextFloat() * 0.2f);
                     trauma = Math.min(1, trauma + 0.1f);
                     for (int n = enemies.size() - 1; n >= 0; n--) {
                         if (n >= enemies.size()) continue;
@@ -1737,7 +1739,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             haptic(HapticFeedbackConstants.KEYBOARD_TAP);
             multiKill();
         } else {
-            if (!sfx.bank("strike", 0.4f, 0.08f, 30)) sfx.play(sfx.pop, 0.4f, 0.9f + rnd.nextFloat() * 0.2f);
+            if (!sfx.bank("strike", 0.4f, 0.08f, 30)) sfx.play(sfx.pop, 0.4f, 0.9f + sndRnd.nextFloat() * 0.2f);
         }
     }
 
@@ -1861,7 +1863,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         lastCoinLand = now;
         int n = Math.min(coinRun, 7);
         float rate = coinRun > 7 ? Math.min(1.25f, 1 + (coinRun - 7) * 0.02f) : 1;
-        if (!sfx.nth("coin", n, 0.18f, rate)) sfx.play(sfx.coin, 0.22f, 0.95f + rnd.nextFloat() * 0.15f);
+        if (!sfx.nth("coin", n, 0.18f, rate)) sfx.play(sfx.coin, 0.22f, 0.95f + sndRnd.nextFloat() * 0.15f);
     }
 
     void pop(float x, float y, String s, int col, float size) {

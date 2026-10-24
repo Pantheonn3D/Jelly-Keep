@@ -407,7 +407,7 @@ New systems live in focused classes so `Game.java` stays the battle:
 - Safe for closed testing.
 
 **Live build: `./gradlew -Plive=true bundleRelease`**
-1. Adds `play-services-ads`, `user-messaging-platform`, `billing` and `review`.
+1. Adds `play-services-ads` 25.5.0, `user-messaging-platform` 4.0.0, `billing` 9.1.0 and `review` 2.0.2.
 2. Puts the AdMob App ID in the manifest through a placeholder.
 3. Reads ad unit IDs from the Gradle properties `admobAppId`, `admobRewarded` and `admobInterstitial`. They default to Google's **test** IDs.
 
@@ -416,7 +416,7 @@ Jens must:
 2. Create the Play products using the SKUs in §6.7.
 3. Update the Data safety form (Advertising ID, purchase history, app interactions), the content rating, "Contains ads" and the privacy policy.
 
-That code can't be compiled against the real SDKs in the cloud sandbox: `dl.google.com` is blocked there. It is written against the documented APIs, `tools/jvm-test/check-live.sh` compiles it against hand-written stand-ins of those APIs, and it is isolated, so a mistake there never breaks the default build.
+On 2026-10-24 the live build compiled, passed R8 and lint, and was signed against the real SDKs, once the cloud environment allowed Google's hosts. It has not run on a device yet. It is isolated, so a mistake there never breaks the default build.
 
 ## 9. Art and audio asks (for Jens)
 
@@ -436,7 +436,7 @@ Prompts are in `docs/art-and-audio-requests.md`, written as one batch with the s
 | `MetaTest` | vault costs and effects; patron ladder; daily streak with a fake clock (claim, double claim, miss a day, cycle); quest seeding, progress and reset; rebirth math; save/load round-trip; v1.6 migration |
 | `PlayTest.adsAndPurchases` | simulated ad lifecycle (loading → showing → reward → +1 ★), no-fill path, Royal Pass skip, stub purchases granting entitlements, consumables |
 | `PlayTest` | title → play → hints; combos; spells; drummer buff; the overlay pause fix; the defeat auto-retreat; and screenshots of every screen and modal |
-| `PlayTest.balance*` | seeded bots that tap, buy, cast spells and rebirth after stalling. They print the curve. Results (run best):<br>• tapper, no ads: 12 at 5 min, 20 at 10, 30 at 20, 39 at 30, rebirth at 30.5 min, best 50 at 60 min, 13 defeats<br>• engaged ad-watcher: 17 / 28 / 45 / 56, rebirth at 31.6 min, best 74, 9 defeats<br>• idle, no taps: best 25 (it lives on the push/retreat loop)<br>The first rebirth comes faster than the 35–45 min target; the Rebirth panel's "push 5 more waves for +N" line nudges players to wait. |
+| `PlayTest.balance*` | seeded bots that tap, buy, cast spells and rebirth after stalling. They print the curve. Results (run best; seeded, so identical every run):<br>• tapper, no ads: 15 at 5 min, 24 at 10, 30 at 15, rebirth at 18.8 min (+5 RJ), back at 30 by 35 min, best 48, 13 defeats<br>• engaged ad-watcher: 17 / 28 / 39 / 45 / 51 / 57 at 5–30 min, rebirth at 35.1 min at wave 59, best 73, 5 defeats + 4 revives<br>• idle, no taps: best 20 (it lives on the push/retreat loop)<br>The tapper bot rebirths as soon as it stalls past wave 30, which is earlier than the 35–45 min target. Real players see the Rebirth panel's "push 5 more waves for +N" line first. |
 | `AspectTest` | adds a landscape tablet size to check the letterbox |
 
 ## 11. Out of scope for this pass
