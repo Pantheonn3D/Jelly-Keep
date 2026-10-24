@@ -20,6 +20,7 @@ import com.android.billingclient.api.QueryPurchasesParams;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -33,6 +34,7 @@ final class PlayStore implements Store, PurchasesUpdatedListener {
     private final BillingClient client;
     private final HashMap<String, ProductDetails> details = new HashMap<>();
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final HashSet<String> consumed = new HashSet<>(), pendingTold = new HashSet<>();   // purchase tokens
     private boolean ready;
 
     PlayStore(Activity act, Host host) {
@@ -55,7 +57,8 @@ final class PlayStore implements Store, PurchasesUpdatedListener {
                 queryOwned(false);
             }
 
-            @Override public void onBillingServiceDisconnected() { ready = false; }
+            // with auto reconnection the client reconnects on the next call by itself
+            @Override public void onBillingServiceDisconnected() { }
         });
     }
 
@@ -84,13 +87,19 @@ final class PlayStore implements Store, PurchasesUpdatedListener {
             return;
         }
         BillingFlowParams.ProductDetailsParams p = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(d).build();
-        client.launchBillingFlow(act, BillingFlowParams.newBuilder().setProductDetailsParamsList(Collections.singletonList(p)).build());
+        int code = client.launchBillingFlow(act, BillingFlowParams.newBuilder().setProductDetailsParamsList(Collections.singletonList(p)).build())
+                .getResponseCode();
+        if (code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) queryOwned(true);
+        else if (code != BillingClient.BillingResponseCode.OK && code != BillingClient.BillingResponseCode.USER_CANCELED)
+            host.storeMessage("The store couldn't open, try again in a moment");
     }
 
     @Override public void restore() {
         if (!ready) { connect(); host.storeMessage("Connecting to Google Play..."); return; }
         queryOwned(true);
     }
+
+    @Override public void refresh() { if (ready) queryOwned(false); }
 
     private void queryOwned(boolean announce) {
         client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build(), (result, purchases) -> {
@@ -110,17 +119,23 @@ final class PlayStore implements Store, PurchasesUpdatedListener {
     }
 
     private void handle(Purchase p) {
-        if (p.getPurchaseState() == Purchase.PurchaseState.PENDING) { host.storeMessage("Purchase pending: it unlocks once payment clears"); return; }
+        String token = p.getPurchaseToken();
+        if (p.getPurchaseState() == Purchase.PurchaseState.PENDING) {
+            if (pendingTold.add(token)) host.storeMessage("Purchase pending: it unlocks once payment clears");
+            return;
+        }
         if (p.getPurchaseState() != Purchase.PurchaseState.PURCHASED) return;
         for (String sku : p.getProducts()) {
             if (Store.consumable(sku)) {
-                client.consumeAsync(ConsumeParams.newBuilder().setPurchaseToken(p.getPurchaseToken()).build(), (result, token) -> {
+                if (!consumed.add(token)) continue;             // already being consumed (an update and a refresh crossed)
+                client.consumeAsync(ConsumeParams.newBuilder().setPurchaseToken(token).build(), (result, t) -> {
                     if (result.getResponseCode() == BillingClient.BillingResponseCode.OK) main.post(() -> host.granted(sku));
+                    else main.post(() -> consumed.remove(token));          // try again on the next refresh
                 });
             } else {
                 host.granted(sku);                         // idempotent for things already owned
                 if (!p.isAcknowledged())
-                    client.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.getPurchaseToken()).build(), r -> { });
+                    client.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(token).build(), r -> { });
             }
         }
     }

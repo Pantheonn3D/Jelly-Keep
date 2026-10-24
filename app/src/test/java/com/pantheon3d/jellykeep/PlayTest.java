@@ -472,10 +472,12 @@ public class PlayTest {
         String log = bot(60, 2, true);
         System.out.println("=== 2 taps/s, watches ads, spends gems ===\n" + log);
         assertTrue(g.bestWave >= 25);
+        assertTrue("even with every ad there are walls (no runaway after a rebirth)", g.bestWave <= 85);
     }
 
     String bot(int minutes, float tapsPerSec, boolean ads) {
         enter();
+        g.rnd.setSeed(7919);                                 // reproducible curves: compare runs before/after a change
         if (ads) g.meta.royalPass = true;                    // stands in for watching each ad (same rewards, no wait)
         float dt = 1 / 30f, tapAcc = 0, shopAcc = 0, lastBestT = 0;
         int defeats = 0, lastRunBest = 0;

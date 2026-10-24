@@ -3,6 +3,7 @@ package com.pantheon3d.jellykeep;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import com.google.android.gms.ads.AdError;
 import com.google.android.gms.ads.AdRequest;
@@ -32,8 +33,10 @@ final class AdMobAds implements Ads {
     private final AtomicBoolean started = new AtomicBoolean();
     private RewardedAd rewarded;
     private InterstitialAd inter;
-    private boolean loadingR, loadingI;
+    private boolean loadingR, loadingI, consentDone;
     private int retries;
+    private long loadedAt;                              // AdMob ads expire an hour after loading
+    private static final long STALE_MS = 50 * 60_000L;
 
     AdMobAds(Activity act, Host host) {
         this.act = act;
@@ -41,9 +44,9 @@ final class AdMobAds implements Ads {
         consent = UserMessagingPlatform.getConsentInformation(act);
         ConsentRequestParameters params = new ConsentRequestParameters.Builder().build();
         consent.requestConsentInfoUpdate(act, params,
-                () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(act, formError -> start()),
-                requestError -> start());
-        if (consent.canRequestAds()) start();
+                () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(act, formError -> { consentDone = true; start(); }),
+                requestError -> { consentDone = true; start(); });
+        if (consent.canRequestAds()) start();          // consent from an earlier session: no need to wait
     }
 
     private void start() {
@@ -54,15 +57,17 @@ final class AdMobAds implements Ads {
     }
 
     @Override public int rewardedState() {
+        if (rewarded != null && SystemClock.elapsedRealtime() - loadedAt > STALE_MS) { rewarded = null; load(); }
         if (rewarded != null) return READY;
-        return loadingR || !started.get() ? LOADING : NONE;
+        if (!started.get()) return consentDone ? NONE : LOADING;      // consent said no ads: don't shimmer forever
+        return loadingR ? LOADING : NONE;
     }
 
     @Override public void load() {
         if (!started.get() || rewarded != null || loadingR) return;
         loadingR = true;
         RewardedAd.load(act, act.getString(R.string.admob_rewarded), new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
-            @Override public void onAdLoaded(RewardedAd ad) { rewarded = ad; loadingR = false; retries = 0; }
+            @Override public void onAdLoaded(RewardedAd ad) { rewarded = ad; loadingR = false; retries = 0; loadedAt = SystemClock.elapsedRealtime(); }
             @Override public void onAdFailedToLoad(LoadAdError error) { loadingR = false; retryLater(); }
         });
     }
@@ -76,21 +81,15 @@ final class AdMobAds implements Ads {
         RewardedAd ad = rewarded;
         if (ad == null) { cb.done(false); load(); return; }
         rewarded = null;
-        final boolean[] settled = {false};
+        final boolean[] earned = {false}, settled = {false};
+        Runnable settle = () -> { if (!settled[0]) { settled[0] = true; cb.done(earned[0]); } };
         ad.setFullScreenContentCallback(new FullScreenContentCallback() {
-            @Override public void onAdDismissedFullScreenContent() {
-                if (!settled[0]) { settled[0] = true; cb.done(false); }
-                load();
-            }
+            // the reward lands once the player is back in the keep; some networks report it just after closing
+            @Override public void onAdDismissedFullScreenContent() { main.postDelayed(settle, earned[0] ? 0 : 600); load(); }
 
-            @Override public void onAdFailedToShowFullScreenContent(AdError error) {
-                if (!settled[0]) { settled[0] = true; cb.done(false); }
-                load();
-            }
+            @Override public void onAdFailedToShowFullScreenContent(AdError error) { main.post(settle); load(); }
         });
-        ad.show(act, reward -> main.post(() -> {
-            if (!settled[0]) { settled[0] = true; cb.done(true); }
-        }));
+        ad.show(act, reward -> earned[0] = true);
     }
 
     private void loadInterstitial() {
@@ -102,7 +101,11 @@ final class AdMobAds implements Ads {
         });
     }
 
-    @Override public boolean interstitialReady() { return inter != null; }
+    /** Asked only when one is due, so a failed load is retried then, for the next time. */
+    @Override public boolean interstitialReady() {
+        if (inter == null) loadInterstitial();
+        return inter != null;
+    }
 
     @Override public void showInterstitial(Runnable after) {
         InterstitialAd ad = inter;
@@ -123,6 +126,7 @@ final class AdMobAds implements Ads {
     @Override public void showPrivacyOptions() {
         UserMessagingPlatform.showPrivacyOptionsForm(act, formError -> {
             if (formError != null) host.adMessage("Couldn't open privacy choices right now");
+            start();                                    // choices may now allow ads
         });
     }
 }

@@ -36,10 +36,17 @@ sed -e "s|<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"
     -e 's|\${admobAppId}|ca-app-pub-3940256099942544~3347511713|' \
     "$root/app/src/main/AndroidManifest.xml" > "$out/AndroidManifest.xml"
 
-rm -rf "$out/res/compiled.zip" "$out/gen"; mkdir -p "$out/gen"
+# what AGP's resValue lines in app/build.gradle generate (the default test ad unit ids)
+rv="$out/resvalues/values"; mkdir -p "$rv"
+{ echo '<resources>'
+  sed -n "s/.*resValue 'string', '\([a-z_]*\)', (findProperty('[A-Za-z]*') ?: '\([^']*\)').*/    <string name=\"\1\" translatable=\"false\">\2<\/string>/p" "$g"
+  echo '</resources>'; } > "$rv/gradle_resvalues.xml"
+
+rm -rf "$out/res/compiled.zip" "$out/res/resvalues.zip" "$out/gen"; mkdir -p "$out/gen"
 aapt2 compile --dir "$root/app/src/main/res" -o "$out/res/compiled.zip"
+aapt2 compile --dir "$out/resvalues" -o "$out/res/resvalues.zip"
 aapt2 link -o "$out/resources.ap_" -I "$fw" --manifest "$out/AndroidManifest.xml" --java "$out/gen" \
-    -A "$root/app/src/main/assets" -0 ogg --auto-add-overlay "$out/res/compiled.zip"
+    -A "$root/app/src/main/assets" -0 ogg --auto-add-overlay "$out/res/compiled.zip" "$out/res/resvalues.zip"
 
 cat > "$out/generated-test-config/com/android/tools/test_config.properties" <<CFG
 android_merged_manifest=$out/AndroidManifest.xml

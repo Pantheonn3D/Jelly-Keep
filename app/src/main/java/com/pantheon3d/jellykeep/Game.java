@@ -125,6 +125,7 @@ public class Game extends View implements Ads.Host, Store.Host {
     final ArrayList<Screen> screens = new ArrayList<>();
     double[] pendingOffline;    // {coins, seconds away}, shown once the player enters the keep
     boolean entered;            // left the title screen this session
+    boolean inAd;               // a full-screen ad paused us: coming back from it isn't "time away"
 
     int combo, burstKills;
     float comboT, comboPop;
@@ -272,12 +273,13 @@ public class Game extends View implements Ads.Host, Store.Host {
         if (lastSaveMs > 0) {
             double away = Math.min((now - lastSaveMs) / 1000.0, meta.offlineCapSec());
             double amt = coinRate * away * meta.offlineFactor();
-            if (away >= 60 && amt >= 1) {
+            if (away >= (inAd ? 300 : 60) && amt >= 1) {
                 pendingOffline = new double[]{amt, away};
                 if (entered) showPending();
             }
         }
         lastSaveMs = now;
+        store.refresh();
         Notify.cancel(getContext());
         music.play(meta.music);
         invalidate();
@@ -426,11 +428,16 @@ public class Game extends View implements Ads.Host, Store.Host {
     double upCost(int i) { return Math.ceil(T_COST[tType[i]] * Math.pow(1.7, tLv[i] + 1)); }
     /** Sawtooth: the two waves after each boss are a breather. */
     static double saw(int w) { if (w <= 10) return 1; int m = w % 10; return m == 1 ? 0.85 : m == 2 ? 0.92 : 1; }
-    double hpScale(int w) { return 8 * Math.pow(1.17, w - 1) * saw(w); }
+    static final double HP_RAMP = 1.0015, BANK_GROW = 1.25;   // tuned by a seeded bot sweep (see CLAUDE.md, Balance)
+    /**
+     * +17% per wave; past wave 40 the climb steepens a little more every wave. Bankers, boosts and Royal Jelly can
+     * keep pace with a flat 17% for ever, so without the ramp an engaged player stops meeting walls after a rebirth.
+     */
+    double hpScale(int w) { int x = Math.max(0, w - 40); return 8 * Math.pow(1.17, w - 1) * saw(w) * Math.pow(HP_RAMP, x * x); }
     double rewardScale(int w) { return 2 * Math.pow(1.12, w - 1); }
     boolean boosted() { return meta.now() < boostUntil; }
     double streakMult() { return 1 + 0.02 * Math.min(streak, 15); }
-    double bankerPay(int lv) { return Math.ceil(rewardScale(wave) * 1.2 * Math.pow(1.25, lv)); }
+    double bankerPay(int lv) { return Math.ceil(rewardScale(wave) * 1.2 * Math.pow(BANK_GROW, lv)); }
     /** Sizes every lump-sum reward (chest, courier, gift, crates): the live income rate, never below a wave's worth. */
     double incomePerMin() { return Math.max(coinRate * 60, rewardScale(wave) * 40 * meta.coinMult()); }
 
@@ -615,7 +622,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         waveTotal = toSpawn = n;
         spawnT = 0.3f;
         for (int k = 0; k < 3; k++) spellAd[k] = false;
-        sfx.play(sfx.horn, 0.6f, 1f);
+        cue("wave_start", sfx.horn, 0.6f, 1f);
         if (mod >= 0) { banner(MOD_NAME[mod], MOD_HINT[mod], 2.4f); trauma = Math.min(1, trauma + 0.2f); }
     }
 
@@ -654,7 +661,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         if (type >= FLAPPER && type <= HEALER && (seenMask & (1 << type)) == 0) {          // first sighting: teach in context
             seenMask |= 1 << type;
             banner(E_NAME[type], E_HINT[type], 2.4f);
-            sfx.play(sfx.horn, 0.5f, 0.8f);
+            cue("enemy_reveal", sfx.horn, 0.5f, 0.8f);
         }
     }
 
@@ -681,7 +688,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         boss = e;
         bossSummonT = 5;
         trauma = Math.min(1, trauma + 0.5f);
-        sfx.play(sfx.hurt, 0.7f, 0.6f);
+        cue("boss_appear", sfx.hurt, 0.7f, 0.6f);
         banner("BOSS!", bossName(wave), 2.4f);
         buzz(new long[]{0, 60, 50, 60});
     }
@@ -707,19 +714,20 @@ public class Game extends View implements Ads.Host, Store.Host {
         baseHp = baseMax;
         banner("WAVE CLEAR!", "+" + fmt(bonus) + " bonus" + (streak >= 2 ? "  ·  streak " + streak : ""), 2f);
         for (int t = 0; t < T_UNLOCK.length; t++)
-            if (T_UNLOCK[t] > prevBest && T_UNLOCK[t] <= bestWave) { banner("NEW TOWER!", T_NAME[t] + " unlocked", 2.4f); sfx.play(sfx.star, 0.8f, 1f); }
+            if (T_UNLOCK[t] > prevBest && T_UNLOCK[t] <= bestWave) { banner("NEW TOWER!", T_NAME[t] + " unlocked", 2.4f); cue("unlock", sfx.star, 0.8f, 1f); }
         for (int k = 0; k < 3; k++)
-            if (S_UNLOCK[k] > prevBest && S_UNLOCK[k] <= bestWave) { banner("NEW SPELL!", S_NAME[k] + ": " + S_WHAT[k], 2.6f); sfx.play(sfx.star, 0.8f, 1.15f); }
+            if (S_UNLOCK[k] > prevBest && S_UNLOCK[k] <= bestWave) { banner("NEW SPELL!", S_NAME[k] + ": " + S_WHAT[k], 2.6f); cue("unlock", sfx.star, 0.8f, 1.15f); }
         if (prevBest >= 10 && cleared >= prevBest && !newBestShown) {            // the high-score moment
             newBestShown = true;
             banner("NEW BEST!", "wave " + cleared + " cleared", 2.4f);
             for (int i = 0; i < 40; i++) confetti(W / 2, fieldTop + 10 * u);
+            cue("new_best", sfx.star, 0.7f, 1.25f);
         }
         baseHappyT = 1.6f; baseSqV -= 10;
         hitStop = 0.06f; trauma = Math.min(1, trauma + 0.3f);
         for (int i = 0; i < 40; i++) confetti(baseX, baseY - baseR * 2);
         for (int i = 0; i < 8; i++) coinPart(baseX, baseY - baseR, 1.2f);
-        sfx.play(sfx.levelUp, 0.8f, 1f);
+        cue("wave_clear", sfx.levelUp, 0.8f, 1f);
         if (wavesCleared % 5 == 0 && !chestUp) { chestUp = true; chestT = 0; chestX = baseX + 15 * u; chestY = baseY + 15 * u; }
         if (cleared == 10 && meta.bossBest == 10 && !meta.seen(H_REVIEW)) {   // first boss down: a peak moment to ask
             meta.see(H_REVIEW);
@@ -732,7 +740,7 @@ public class Game extends View implements Ads.Host, Store.Host {
     void defeat() {
         phase = 2;
         hitStop = 0.2f; trauma = 1; flash(I4, 0.8f);
-        sfx.play(sfx.defeat, 0.9f, 1f);
+        cue("defeat", sfx.defeat, 0.9f, 1f);
         buzz(new long[]{0, 80, 60, 120});
         int left = toSpawn + enemies.size();
         double bossLeft = boss != null && !boss.dead ? boss.hp / boss.max : -1;
@@ -752,7 +760,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             e.kx += dx / d * 120 * u; e.ky += dy / d * 120 * u; e.atkT = 1f;
         }
         ring(baseX, baseY, A6, 3f);
-        flash(A6, 0.5f); sfx.play(sfx.levelUp, 0.7f, 1.1f);
+        flash(A6, 0.5f); cue("revive", sfx.levelUp, 0.7f, 1.1f);
     }
 
     void retreat() {
@@ -765,7 +773,8 @@ public class Game extends View implements Ads.Host, Store.Host {
         save();
         if (meta.interstitialDue() && ads.interstitialReady()) {
             meta.lastAdMs = meta.now();
-            ads.showInterstitial(() -> { });
+            inAd = true;
+            ads.showInterstitial(() -> inAd = false);
         }
     }
 
@@ -782,12 +791,12 @@ public class Game extends View implements Ads.Host, Store.Host {
                 }
                 waveTotal += 2;
                 boss.hitT = 0.12f;
-                sfx.play(sfx.horn, 0.35f, 0.7f);
+                cue("boss_summon", sfx.horn, 0.35f, 0.7f);
             }
             if (!boss.enraged && boss.hp < boss.max * 0.3) {
                 boss.enraged = true; boss.spd *= 1.4f;
                 pop(boss.x, cy(boss) - boss.r * 1.8f, "ENRAGED!", A5, 6);
-                trauma = Math.min(1, trauma + 0.4f); sfx.play(sfx.hurt, 0.8f, 0.5f);
+                trauma = Math.min(1, trauma + 0.4f); cue("boss_enrage", sfx.hurt, 0.8f, 0.5f);
             }
         }
         for (int i = enemies.size() - 1; i >= 0; i--) {
@@ -809,7 +818,7 @@ public class Game extends View implements Ads.Host, Store.Host {
                         if (o != e) pop(o.x, cy(o) - o.r * 1.4f, "+", I6, 3.4f);
                     }
                     P ring = add(RING, e.x, e.y); if (ring != null) { ring.max = 0.6f; ring.sz = hr; ring.col = I5; }
-                    if (healed) sfx.play(sfx.star, 0.18f, 1.5f);
+                    if (healed && !sfx.bank("healer_heal", 0.3f, 0.1f, 300)) sfx.play(sfx.star, 0.18f, 1.5f);
                 }
             }
             float dx = baseX - e.x, dy = (baseY - baseR * 0.3f) - e.y, d = (float) Math.max(1, Math.hypot(dx, dy));
@@ -841,7 +850,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         trauma = Math.min(1, trauma + (e.type == BOSS ? 0.6f : 0.15f));
         flash(I4, e.type == BOSS ? 0.5f : 0.22f);
         long now = System.currentTimeMillis();
-        if (now - lastHitSnd > 120) { lastHitSnd = now; sfx.play(sfx.hurt, 0.6f, 0.9f + rnd.nextFloat() * 0.2f); haptic(HapticFeedbackConstants.KEYBOARD_TAP); }
+        if (now - lastHitSnd > 120) { lastHitSnd = now; if (!sfx.bank("king_hurt", 0.6f, 0.08f, 0)) sfx.play(sfx.hurt, 0.6f, 0.9f + rnd.nextFloat() * 0.2f); haptic(HapticFeedbackConstants.KEYBOARD_TAP); }
         burst(baseX + (e.x - baseX) * 0.5f, baseY - baseR * 0.4f + (e.y - baseY) * 0.4f, 5, A5, 0.8f);
         if (baseHp <= 0) { baseHp = 0; defeat(); }
     }
@@ -885,10 +894,10 @@ public class Game extends View implements Ads.Host, Store.Host {
             double pouch = gain(e.reward * meta.pouchMult(), G_KILL);
             for (int i = 0; i < 8; i++) coinPart(e.x, e.y - e.r, 1.3f);
             pop(e.x, cy(e) - e.r * 2.6f, "LUCKY +" + fmt(pouch), A7, 4.8f);
-            sfx.play(sfx.star, 0.5f, 1.3f);
+            cue("lucky_pouch", sfx.star, 0.5f, 1.3f);
         }
         long now = System.currentTimeMillis();
-        if (now - lastDieSnd > 50) { lastDieSnd = now; sfx.play(sfx.die, 0.55f, 0.85f + rnd.nextFloat() * 0.35f); }
+        if (now - lastDieSnd > 50) { lastDieSnd = now; if (!sfx.bank("enemy_die", 0.55f, 0.12f, 0)) sfx.play(sfx.die, 0.55f, 0.85f + rnd.nextFloat() * 0.35f); }
         if (e.type == BRUTE || e.type == BOSS) {
             hitStop = e.type == BOSS ? 0.14f : 0.05f;
             trauma = Math.min(1, trauma + (e.type == BOSS ? 0.9f : 0.3f));
@@ -897,7 +906,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         if (e.type == BOSS) {
             boss = null;
             for (int i = 0; i < 50; i++) confetti(e.x, e.y);
-            buzz(new long[]{0, 50, 40, 90}); sfx.play(sfx.crit, 1f, 0.9f);
+            buzz(new long[]{0, 50, 40, 90}); cue("boss_die", sfx.crit, 1f, 0.9f);
             boolean first = wave > meta.bossBest;
             long gems = first ? 25 : 3;
             if (first) meta.bossBest = wave;
@@ -962,7 +971,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         float dx = t.x - baseX, dy = t.y - baseY, dist = (float) Math.max(1, Math.hypot(dx, dy));
         ring(t.x, cy(t), A6, 0.5f);
         hitNumber(t.x, cy(t) - t.r, d);
-        sfx.play(sfx.bonk, 0.4f, 0.9f + rnd.nextFloat() * 0.2f);
+        if (!sfx.bank("king_bonk", 0.45f, 0.1f, 0)) sfx.play(sfx.bonk, 0.4f, 0.9f + rnd.nextFloat() * 0.2f);
         damage(t, d, dx / dist * 70 * u, dy / dist * 70 * u);
     }
 
@@ -1013,6 +1022,7 @@ public class Game extends View implements Ads.Host, Store.Host {
     void payout(int i) {
         double v = gain(bankerPay(tLv[i]), G_BANK);
         tSqV[i] -= 9;
+        sfx.bank("banker_coin", 0.3f, 0.08f, 250);
         for (int k = 0; k < 3; k++) coinPart(padX[i], padY[i] - 12 * u, 0.9f);
         pop(padX[i], padY[i] - 18 * u, "+" + fmt(v), A6, 3.8f);
     }
@@ -1022,7 +1032,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         tBeat[i] = 0.18f;
         if (((int) (time * 2)) % 2 == 0) {
             P ring = add(RING, padX[i], padY[i] - u); if (ring != null) { ring.max = 0.45f; ring.sz = 12 * u; ring.col = A5; }
-            sfx.play(sfx.bonk, 0.12f, 0.7f);
+            if (!sfx.bank("drum_hit", 0.25f, 0.05f, 90)) sfx.play(sfx.bonk, 0.12f, 0.7f);
         }
     }
 
@@ -1043,7 +1053,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             Shot s = new Shot(2, sx + side * 6 * u, muzzleY(i, t) - 2 * u);
             s.tg = tg; s.dmg = towerDmg(i);
             shots.add(s);
-            sfx.bank("popper_shoot", 0.22f, 0.12f, 70, 1.7f);
+            if (!sfx.bank("sparkler_fizz", 0.3f, 0.1f, 70)) sfx.bank("popper_shoot", 0.22f, 0.12f, 70, 1.7f);
         } else if (t == SNIPER) {
             tSqV[i] -= 10;
             float mx = sx + tFace[i] * 9 * u, my = muzzleY(i, t);
@@ -1053,7 +1063,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             hitNumber(tg.x, cy(tg) - tg.r, d);
             damage(tg, d, (tg.x - mx) * 0.6f, 0, true);
             trauma = Math.min(1, trauma + 0.1f);
-            sfx.play(sfx.shoot, 0.5f, 0.55f);
+            if (!sfx.bank("sniper_shot", 0.6f, 0.05f, 0)) sfx.play(sfx.shoot, 0.5f, 0.55f);
             sfx.bank("pebble_hit", 0.5f, 0.05f, 40, 0.8f);
         } else if (t == MORTAR || t == BOMB) {
             tSqV[i] -= 10;
@@ -1078,8 +1088,9 @@ public class Game extends View implements Ads.Host, Store.Host {
                 Enemy e = enemies.get(k);
                 if (Math.hypot(e.x - padX[i], e.y - padY[i]) < rr + e.r) { e.bubT = 1.3f; damage(e, d, 0, 0); }
             }
-            sfx.bank("strike_hit", 0.3f, 0.1f, 120, 1.3f);
+            if (!sfx.bank("bubble_pop", 0.4f, 0.1f, 120)) sfx.bank("strike_hit", 0.3f, 0.1f, 120, 1.3f);
         } else if (t == LANTERN) {                                      // steady burn on everything nearby
+            sfx.bank("lantern_crackle", 0.22f, 0.1f, 450);
             float rr = T_RANGE[LANTERN] * u;
             double d = towerDmg(i) / T_RATE[LANTERN];
             for (int k = enemies.size() - 1; k >= 0; k--) {
@@ -1170,8 +1181,10 @@ public class Game extends View implements Ads.Host, Store.Host {
         for (int k = 0; k < 10; k++) dust(s.tx + (rnd.nextFloat() - 0.5f) * 14 * u, s.ty);
         burst(s.tx, s.ty - 3 * u, 16, A6, 1.3f);
         trauma = Math.min(1, trauma + 0.35f); hitStop = Math.max(hitStop, 0.035f);
-        if (!sfx.bank("wall_slam", 0.8f, 0.05f, 60, 0.85f)) sfx.play(sfx.splat, 0.6f, 0.7f);
-        sfx.play(sfx.crit, 0.45f, 0.9f);
+        if (!sfx.bank("bomb_blast", 0.8f, 0.06f, 60)) {
+            if (!sfx.bank("wall_slam", 0.8f, 0.05f, 60, 0.85f)) sfx.play(sfx.splat, 0.6f, 0.7f);
+            sfx.play(sfx.crit, 0.45f, 0.9f);
+        }
         burstKills = 0;
         for (int n = enemies.size() - 1; n >= 0; n--) {
             if (n >= enemies.size()) continue;
@@ -1194,7 +1207,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             spellFlash[k] = Math.max(0, spellFlash[k] - dt * 1.5f);
             if (spellCd[k] > 0) {
                 spellCd[k] -= dt;
-                if (spellCd[k] <= 0) { spellCd[k] = 0; if (spellUnlocked(k)) { spellFlash[k] = 1; sfx.play(sfx.star, 0.25f, 1.6f); } }
+                if (spellCd[k] <= 0) { spellCd[k] = 0; if (spellUnlocked(k)) { spellFlash[k] = 1; cue("spell_ready", sfx.star, 0.25f, 1.6f); } }
             }
         }
         if (freezeT > 0) freezeT -= dt;
@@ -1233,7 +1246,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         trauma = Math.min(1, trauma + 0.7f); hitStop = Math.max(hitStop, 0.08f); flash(A6, 0.35f);
         baseSqV += 14;
         if (!sfx.bank("wall_slam", 0.9f, 0.04f, 0, 0.7f)) sfx.play(sfx.splat, 0.8f, 0.6f);
-        sfx.play(sfx.crit, 0.7f, 0.8f);
+        cue("spell_slam", sfx.crit, 0.7f, 0.8f);
         buzz(new long[]{0, 40, 30, 70});
         for (int n = enemies.size() - 1; n >= 0; n--) {
             if (n >= enemies.size()) continue;
@@ -1256,7 +1269,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         }
         flash(A7, 0.3f);
         sfx.bank("strike_hit", 0.8f, 0.05f, 0, 0.75f);
-        sfx.play(sfx.star, 0.5f, 0.7f);
+        cue("spell_freeze", sfx.star, 0.5f, 0.7f);
     }
 
     void goldRush() {
@@ -1264,7 +1277,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         flash(A6, 0.4f);
         for (int i = 0; i < 16; i++) coinPart(baseX, baseY - baseR, 1.5f);
         banner("GOLD RUSH!", "coins ×2 for 15 s", 1.8f);
-        sfx.play(sfx.levelUp, 0.8f, 1.3f);
+        cue("spell_rush", sfx.levelUp, 0.8f, 1.3f);
     }
 
     // ---------------------------------------------------------------- combos, callouts
@@ -1281,7 +1294,8 @@ public class Game extends View implements Ads.Host, Store.Host {
     void multiKill() {
         if (burstKills < 2) return;
         callout(burstKills == 2 ? "DOUBLE!" : burstKills == 3 ? "TRIPLE!" : "MULTI ×" + burstKills + "!", A7);
-        sfx.play(sfx.star, 0.4f, 1.2f + Math.min(burstKills, 6) * 0.06f);
+        float rise = Math.min(burstKills, 6) * 0.06f;                       // each bigger multi-kill rings higher
+        if (!sfx.bank("multi_kill", 0.5f, 0, 0, 1 + rise)) sfx.play(sfx.star, 0.4f, 1.2f + rise);
     }
 
     // ---------------------------------------------------------------- courier & chest
@@ -1289,7 +1303,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         if (bestWave < UNLOCK_COURIER || !entered) return;
         if (!courierUp) {
             if (phase != 2) courierT -= dt;
-            if (courierT <= 0) { courierUp = true; courierLife = 0; sfx.play(sfx.star, 0.35f, 1.8f); }
+            if (courierT <= 0) { courierUp = true; courierLife = 0; cue("courier", sfx.star, 0.35f, 1.8f); }
             return;
         }
         courierLife += dt;
@@ -1312,7 +1326,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         chestUp = false;
         meta.see(H_CHEST);
         meta.quest(Meta.Q_CHEST, 1);
-        sfx.play(sfx.star, 0.9f, 1f); flash(A6, 0.4f); trauma = Math.min(1, trauma + 0.3f);
+        cue("chest_open", sfx.star, 0.9f, 1f); flash(A6, 0.4f); trauma = Math.min(1, trauma + 0.3f);
         burst(chestX, chestY - 3 * u, 25, A6, 1.4f);
         push(Screens.Reward.chest(this, incomePerMin() * 0.6));
     }
@@ -1327,7 +1341,9 @@ public class Game extends View implements Ads.Host, Store.Host {
             toast(st == Ads.LOADING ? "The ad is still loading, try again in a moment" : "No ad available right now, try again soon");
             return;
         }
+        inAd = true;
         ads.showRewarded(placement, earned -> {
+            inAd = false;
             if (earned) { reward.run(); patronStar(); }
             else toast("No reward: the ad didn't finish");
         });
@@ -1339,7 +1355,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         if (perk != null) {
             banner("PATRON PERK!", perk, 2.6f);
             for (int i = 0; i < 30; i++) confetti(W / 2, fieldTop + 10 * u);
-            sfx.play(sfx.star, 0.9f, 1.1f);
+            cue("perk", sfx.star, 0.9f, 1.1f);
         } else toast("+1 Patron star · " + meta.patron + "/" + meta.patronNextAt());
     }
 
@@ -1350,7 +1366,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         watchAd(Ads.BOOST, () -> {
             long n2 = meta.now();
             boostUntil = Math.min(Math.max(n2, boostUntil) + meta.boostPerAdMs(), n2 + meta.boostBankMs());
-            flash(A6, 0.35f); sfx.play(sfx.buy, 0.8f, 1.2f); coinBumpV -= 8;
+            flash(A6, 0.35f); cue("boost_on", sfx.buy, 0.8f, 1.2f); coinBumpV -= 8;
             save();
         });
     }
@@ -1403,20 +1419,20 @@ public class Game extends View implements Ads.Host, Store.Host {
         flash(A7, 0.9f); trauma = 1; hitStop = 0.2f;
         for (int i = 0; i < 80; i++) confetti(baseX, baseY - baseR * 2);
         banner("REBORN!", "+" + got + " Royal Jelly · +" + Math.round(got * 5) + "% coins & damage", 3f);
-        sfx.play(sfx.levelUp, 1f, 0.9f);
+        cue("rebirth", sfx.levelUp, 1f, 0.9f);
         save(); meta.save();
     }
 
     void coinShower(double amt) {
         for (int i = 0; i < 24; i++) coinPart(W / 2 + (rnd.nextFloat() - 0.5f) * 40 * u, H * 0.48f, 1.4f);
         pop(W / 2, H * 0.42f, "+" + fmt(amt), A6, 9);
-        sfx.play(sfx.levelUp, 0.8f, 1.2f);
+        cue("coin_shower", sfx.levelUp, 0.8f, 1.2f);
     }
 
     void gemShower(long n) {
         for (int i = 0; i < Math.min(14, 3 + n / 5); i++) gemPart(W / 2 + (rnd.nextFloat() - 0.5f) * 30 * u, H * 0.48f, 1.3f);
         pop(W / 2, H * 0.36f, "+" + n + " gems", A7, 7);
-        sfx.play(sfx.star, 0.8f, 1.2f);
+        cue("gem_shower", sfx.star, 0.8f, 1.2f);
     }
 
     void deny() {
@@ -1494,6 +1510,9 @@ public class Game extends View implements Ads.Host, Store.Host {
     @Override public boolean performClick() { return super.performClick(); }
 
     void click() { if (!sfx.bank("click", 0.6f, 0.04f, 20)) sfx.play(sfx.pop, 0.5f, 1.25f); haptic(HapticFeedbackConstants.VIRTUAL_KEY); }
+
+    /** A recorded bank once it has been delivered (assets/sfx/<bank>_N.ogg), else the synth stand-in. */
+    void cue(String bank, int synth, float vol, float rate) { if (!sfx.bank(bank, vol, 0.03f, 0)) sfx.play(synth, vol, rate); }
 
     void haptic(int kind) { if (meta.haptics) performHapticFeedback(kind); }
 
@@ -1595,7 +1614,7 @@ public class Game extends View implements Ads.Host, Store.Host {
         if (tLv[s] % 10 == 0) {                                              // a star: damage doubles
             pop(padX[s], padY[s] - 24 * u, "STAR! ×2 DAMAGE", A6, 5);
             for (int i = 0; i < 30; i++) confetti(padX[s], padY[s] - 12 * u);
-            sfx.play(sfx.star, 0.9f, 1.1f);
+            cue("tower_star", sfx.star, 0.9f, 1.1f);
             trauma = Math.min(1, trauma + 0.3f);
         }
         return true;
@@ -1708,7 +1727,7 @@ public class Game extends View implements Ads.Host, Store.Host {
             if (combo > meta.bestCombo) meta.bestCombo = combo;
             for (int k = 0; k < COMBO_AT.length; k++) if (combo == COMBO_AT[k]) {
                 callout(COMBO_TXT[k], A6);
-                sfx.play(sfx.star, 0.55f, 1f + k * 0.08f);
+                if (!sfx.bank("combo", 0.55f, 0, 0, 1 + k * 0.08f)) sfx.play(sfx.star, 0.55f, 1f + k * 0.08f);
                 trauma = Math.min(1, trauma + 0.2f);
             }
             trauma = Math.min(1, trauma + 0.12f);
@@ -1818,7 +1837,7 @@ public class Game extends View implements Ads.Host, Store.Host {
                         p.vx += (dx / d * sp - p.vx) * k; p.vy += (dy / d * sp - p.vy) * k;
                         if (d < 3.5f * u) {
                             parts.remove(i);
-                            if (p.t == COIN) { coinBumpV += 3.5f; coinLand(); } else { gemBumpV += 4; sfx.play(sfx.coin, 0.2f, 1.4f); }
+                            if (p.t == COIN) { coinBumpV += 3.5f; coinLand(); } else { gemBumpV += 4; if (!sfx.bank("gem_land", 0.25f, 0.1f, 40)) sfx.play(sfx.coin, 0.2f, 1.4f); }
                             continue;
                         }
                     }

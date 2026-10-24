@@ -29,6 +29,9 @@ interface Store {
     /** Re-delivers bought non-consumables (new phone, reinstall). */
     void restore();
 
+    /** Silently picks up purchases that finished while the game was in the background (pending payments). */
+    void refresh();
+
     /** Default build: test prices, purchases confirmed in-game and granted on the spot. */
     final class Stub implements Store {
         private static final String[] PRICES = {"$4.99", "$1.99", "$3.99", "$0.99", "$4.99", "$9.99", "$2.99"};
@@ -44,5 +47,7 @@ interface Store {
         @Override public void buy(String sku) { host.confirmTestPurchase(sku, price(sku), () -> host.granted(sku)); }
 
         @Override public void restore() { host.storeMessage("Test build: nothing to restore"); }
+
+        @Override public void refresh() { }
     }
 }

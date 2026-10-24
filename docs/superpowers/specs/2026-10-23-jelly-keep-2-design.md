@@ -1,7 +1,8 @@
 # Jelly Keep 2.0 — design spec
 
 - **Date:** 2026-10-23
-- **Status:** written by Claude from Jens's brief. Jens asked Claude to fill in the gaps, so work goes ahead on this spec; redirect at any time.
+- **Status:** written by Claude from Jens's brief. Jens asked Claude to fill in the gaps, so work went ahead on this spec; redirect at any time.
+- **Implemented:** 2.0 (versionCode 9). The numbers below are the tuned values that shipped; §10 has the balance results.
 - **Baseline:** v1.6 (commit `aa374a0`, versionCode 8).
 
 ## 1. Intent
@@ -34,7 +35,7 @@ Research summary (sources in §12):
 **Secondary audience:** casual puzzle players 35+ who come for the cute art and stay for daily habits and gentle goals.
 
 What this means for the design:
-- **Short sessions.** Every system pays off within 5 minutes: chests every 5 waves, a courier every 4–7 minutes, quests that finish in a session.
+- **Short sessions.** Every system pays off within 5–10 minutes: chests every 5 waves, a courier every 6–9 minutes, quests that finish in a session.
 - **Progress while away.** Offline earnings, a meaningful return reward, and reminders the player can switch off.
 - **Visible, permanent power.** Gems feed the Vault, ads feed the Patron ladder, and Rebirth earns Royal Jelly.
 - **Low punishment.** Defeat costs a few waves and never coins. You can always revive or retreat, and play never blocks on a modal.
@@ -46,7 +47,7 @@ What this means for the design:
 | Source | Mechanic | Jelly Keep version |
 |---|---|---|
 | Eatventure | **Vault:** gems buy permanent upgrades that survive every new city. These include ad boost multiplier (Remote, up to ×6), ad boost duration (TV, up to ×8), offline cap and value, tip chance and value, and investor offers. | **Royal Vault**: 12 gem-bought upgrades in 3 groups (§6.4) that survive Rebirth. |
-| Eatventure | **Investor:** walks in and offers a lump of cash or sometimes gems for an ad. | **Royal Courier**: a balloon that drifts across every 4–7 min (§6.8). |
+| Eatventure | **Investor:** walks in and offers a lump of cash or sometimes gems for an ad. | **Royal Courier**: a balloon that drifts across every 6–9 min (§6.8). |
 | Eatventure | "2× profit forever" purchase | **Golden Spoon** IAP |
 | The Tower | Ad gems every ~10 min. Ad coin bonus banks up to 2 h. 5 daily missions feed a weekly reward. A paid "no ads but keep bonuses" option. | Courier gems, a banked boost (bank holds 6× the duration of one ad), daily quests, and a **Royal Pass** that skips ads but keeps every reward. |
 | Block Blast | Zero-friction start, juicy **combos** with escalating callouts, a high-score chase, and a rewarded revive at the natural failure point. Interstitials only at breaks. | One-tap title screen, **tap combos** with callouts and rising pitch, a **NEW BEST!** moment, revive on defeat, and one interstitial only after a retreat. |
@@ -152,7 +153,7 @@ What we deliberately skip:
 
 - **Tap combos:**
   - A hit within 1.0 s of the last hit adds 1 to the combo; a miss or a timeout resets it.
-  - Tap damage is multiplied by 1 + 0.025 × min(combo, 40), up to ×2.
+  - Tap damage is multiplied by 1 + 0.0125 × min(combo, 40), up to ×1.5. (×2 made tapping outclass towers.)
   - Callouts appear at 10 NICE!, 20 GREAT!, 30 AMAZING!, 40 JELLY-TASTIC! and 60+ UNSTOPPABLE!.
   - The combo counter pops with a scale bump, and coin sounds rise in pitch.
 - **Multi-kills:** 2 or more kills from one tap or blast show DOUBLE! / TRIPLE! / MULTI ×N!.
@@ -160,9 +161,9 @@ What we deliberately skip:
 
   | Spell | Unlocks at | Effect | Cooldown |
   |---|---|---|---|
-  | Jelly Slam | wave 6 | 25× tap damage to everything within 45u of the king, with knockback, a shockwave and shake | 40 s |
+  | Jelly Slam | wave 6 | 12× tap damage to everything within 45u of the king, with knockback, a shockwave and shake | 40 s |
   | Bubble Trap | wave 12 | Every enemy frozen for 4 s and takes +25% damage | 60 s |
-  | Gold Rush | wave 18 | Coins ×3 for 15 s, with a coin rain | 90 s |
+  | Gold Rush | wave 18 | Coins ×2 for 15 s, with a coin rain | 90 s |
 
   - When a spell is on cooldown, tapping it offers an instant recharge for an ad, once per spell per wave.
 - **Wave identity:**
@@ -183,19 +184,21 @@ What we deliberately skip:
     | Giants | brutes, ×0.6 count |
 
   - **Sawtooth:** waves ending in 1 or 2 get HP ×0.85 and ×0.92, as breathers.
+  - **HP:** ×1.17 per wave, and past wave 40 ×1.0015^((w − 40)²) on top. Bankers and boosts can keep pace with a flat 17% indefinitely; the ramp keeps walls in the late game (§10).
 - **Wave streak:**
-  - +3% coins per consecutive cleared wave, capped at +45%.
+  - +2% coins per consecutive cleared wave, capped at +30%.
   - The flame number by the wave plank flares on each clear.
   - A defeat ends it; a revive keeps it.
 - **Tower stars:**
   - Every 10 levels, damage ×2 at that level and a star on the badge.
   - The panel shows "★ in 3 lv → ×2 damage".
-  - Base growth is ×1.47 per level. Before: ×1.55 per level with no milestones.
-- **Drummer:** buffs its 2 ring neighbours, with link lines drawn.
+  - Base growth is ×1.45 per level. Before: ×1.55 per level with no milestones.
+- **Drummer:** buffs its 2 ring neighbours by 1.15 + 0.35 × (1 − 0.88^lv), so at most +50%, with link lines drawn.
+- **King bonk:** the king hits an adjacent enemy for tap damage once a second, so a player who never taps still progresses.
 - **Hold to upgrade:** holding UPGRADE, STRIKE or FORTIFY repeats purchases, accelerating.
 - **Defeat:**
   - Near-miss copy: "So close! Boss at 12%" or "3 gloom left".
-  - Two buttons: [▶ REVIVE · keep 🔥N], once per wave, and [Retreat to wave W-3], with a 10 s auto-retreat ring.
+  - Two buttons: [▶ REVIVE · keep 🔥N], once per wave and then not again for 240 s, and [Retreat to wave W-3], with a 10 s auto-retreat ring.
 - **Readability:** a soft lavender rim glow under enemies, and banners kept out of the centre.
 
 ### 6.3 Currencies
@@ -224,7 +227,7 @@ Cost = ⌈base × growth^level⌉.
 | Income | Night Shift | offline value 50% +10% | 15 (200%) | 20, 1.25 |
 | Ads & bonuses | Boost Power | ad boost ×2 +0.1 | 20 (×4) | 25, 1.25 |
 | Ads & bonuses | Boost Time | per ad 5 min +1 min | 15 (20 min) | 20, 1.25 |
-| Ads & bonuses | Courier's Purse | courier gift 10 min of income +2 min | 20 | 15, 1.22 |
+| Ads & bonuses | Courier's Purse | courier gift 4 min of income +0.5 min | 20 (14 min) | 15, 1.22 |
 | Ads & bonuses | Gem Finder | courier brings gems 10% +3% | 14 (52%) | 30, 1.30 |
 
 The 3 groups of 4 keep each chunk small (Miller's law).
@@ -255,10 +258,10 @@ The ladder is always visible in the Vault, e.g. "7 ★ → next at 8". The first
 | Placement | Where | Reward | Cap |
 |---|---|---|---|
 | BOOST | HUD ×2 button | coins ×(2 + 0.1·Power) for (5 + Time) min, banking up to 6× | bank cap |
-| REVIVE | defeat | full HP, 3 s shield, streak kept | 1 per wave |
+| REVIVE | defeat | full HP, 3 s shield, streak kept | 1 per wave, then a 240 s cooldown |
 | OFFLINE | welcome back | ×2 the offline earnings | per return |
-| CHEST | treasure chest | ×3 the chest | per chest |
-| COURIER | balloon | 10+ min of income, or gems (Gem Finder) | per courier |
+| CHEST | treasure chest | ×2 the chest (a chest is 0.6 min of income) | per chest |
+| COURIER | balloon | 4+ min of income, or 20 gems (Gem Finder) | per courier |
 | GEMS | Shop / Vault | +15 gems | 5 per day |
 | SPELL | spell on cooldown | instant recharge | 1 per spell per wave |
 | DAILY | daily gift | ×2 | 1 per day |
@@ -279,7 +282,7 @@ The ladder is always visible in the Vault, e.g. "7 ★ → next at 8". The first
 | SKU | Name | Type | Price | Effect |
 |---|---|---|---|---|
 | royal_pass | Royal Pass | permanent | $4.99 | no interstitials; rewarded ads skipped but rewarded (+1 ★ each); +100 gems |
-| starter_pack | Starter Pack | permanent, offered from wave 8 | $1.99 | 300 gems + permanent +50% coins |
+| starter_pack | Starter Pack | permanent, offered once at session start from wave 8 | $1.99 | 300 gems + permanent +50% coins |
 | golden_spoon | Golden Spoon | permanent | $3.99 | permanent ×2 coins |
 | gems_s / gems_m / gems_l | Gem packs | consumable | $0.99 / $4.99 / $9.99 | 80 / 500 / 1200 gems |
 | gem_jar | Gem Jar | consumable | $2.99 | fills 2 gems per cleared wave up to 600; break it to collect (buyable from 150) |
@@ -319,8 +322,8 @@ Gem crates (gems → coins): 40 gems → 15 min of income, 120 gems → 60 min.
     - reach an N streak
   - Each quest pays 10–15 gems, and finishing all three pays a 25-gem bonus.
 - **Royal Courier:**
-  - From wave 5, every 4–7 min, a balloon with the Piggy Banker drifts over the field for about 18 s.
-  - Tapping it offers ▶ a big gift, or a free small gift (1 min of income).
+  - From wave 5, every 6–9 min, a balloon with the Piggy Banker drifts over the field for about 18 s.
+  - Tapping it offers ▶ a big gift, or a free small gift (0.5 min of income).
 - **Milestones:**
   - First clear of each 10th wave gives a big fanfare and gems.
   - Beating your best wave shows a **NEW BEST!** ribbon (peak).
@@ -334,14 +337,15 @@ Gem crates (gems → coins): 40 gems → 15 min of income, 120 gems → 60 min.
 ### 6.9 Rebirth
 
 - **Unlocks** at best wave 30. The button shows a locked teaser before that.
-- **Royal Jelly gained** = ⌊5 × 1.12^(run best − 30)⌋. That gives:
+- **Royal Jelly gained** = ⌊5 × 1.08^(run best − 30)⌋. That gives (1.12 exploded: one rebirth at wave 90 paid thousands):
 
   | Run best | Royal Jelly |
   |---|---|
   | 30 | 5 |
-  | 40 | 15 |
-  | 50 | 48 |
-  | 60 | 149 |
+  | 40 | 10 |
+  | 50 | 23 |
+  | 60 | 50 |
+  | 70 | 108 |
 
 - **Bonus:** each Royal Jelly adds +5% coins and damage.
 - **Resets:** wave, coins, towers, Strike and Fortify, streak.
@@ -379,7 +383,7 @@ New systems live in focused classes so `Game.java` stays the battle:
 | `Ui` | immediate-mode hit registry (rects → action ids), drag scrolling, shared widgets (buttons, pills, bars, wrapped text) on top of `Art` |
 | `Screens` | title and modal panels: draw + tap handling, built on `Ui` |
 | `Ads`, `Store` | monetization seams. `Ads.Sim` shows a visible fake ad with a countdown; `Store.Stub` confirms in-game. |
-| `Monetization` | picks the implementations. It loads `live.LiveMonetization` by reflection when built with `-Plive=true`, otherwise the stubs. |
+| `MonetizationFactory` | picks the implementations. Two copies exist: `src/stub/java` (default) returns the stubs; `src/live/java` (`-Plive=true`) returns AdMob and Play Billing. Gradle compiles exactly one, so no reflection. |
 | `Notify` | local reminders: AlarmManager + receiver, framework APIs only |
 | `Music` | loops `assets/music/*.ogg` when present, silent otherwise |
 
@@ -391,7 +395,7 @@ New systems live in focused classes so `Game.java` stays the battle:
 
 **Save format:**
 - SharedPreferences `"jellykeep"` keeps the v1.6 keys.
-- New keys are added, with `ver=2`.
+- New keys are added under an `m.` prefix, with `m.ver=2`.
 - v1.6 players get a 50-gem "thanks for testing" gift.
 
 ## 8. Monetization integration
@@ -405,14 +409,14 @@ New systems live in focused classes so `Game.java` stays the battle:
 **Live build: `./gradlew -Plive=true bundleRelease`**
 1. Adds `play-services-ads`, `user-messaging-platform`, `billing` and `review`.
 2. Puts the AdMob App ID in the manifest through a placeholder.
-3. Reads ad unit IDs from `gradle.properties`. They default to Google's **test** IDs.
+3. Reads ad unit IDs from the Gradle properties `admobAppId`, `admobRewarded` and `admobInterstitial`. They default to Google's **test** IDs.
 
 Jens must:
 1. Create the AdMob app and its units.
 2. Create the Play products using the SKUs in §6.7.
 3. Update the Data safety form (Advertising ID, purchase history, app interactions), the content rating, "Contains ads" and the privacy policy.
 
-That code can't be compiled in the cloud sandbox: `dl.google.com` is blocked there. It is written against the documented APIs and is isolated, so a mistake there never breaks the default build.
+That code can't be compiled against the real SDKs in the cloud sandbox: `dl.google.com` is blocked there. It is written against the documented APIs, `tools/jvm-test/check-live.sh` compiles it against hand-written stand-ins of those APIs, and it is isolated, so a mistake there never breaks the default build.
 
 ## 9. Art and audio asks (for Jens)
 
@@ -430,9 +434,9 @@ Prompts are in `docs/art-and-audio-requests.md`, written as one batch with the s
 | Test | Covers |
 |---|---|
 | `MetaTest` | vault costs and effects; patron ladder; daily streak with a fake clock (claim, double claim, miss a day, cycle); quest seeding, progress and reset; rebirth math; save/load round-trip; v1.6 migration |
-| `MonetizationTest` | simulated ad lifecycle (loading → showing → reward → +1 ★), no-fill path, Royal Pass skip, stub purchases granting entitlements, consumables |
+| `PlayTest.adsAndPurchases` | simulated ad lifecycle (loading → showing → reward → +1 ★), no-fill path, Royal Pass skip, stub purchases granting entitlements, consumables |
 | `PlayTest` | title → play → hints; combos; spells; drummer buff; the overlay pause fix; the defeat auto-retreat; and screenshots of every screen and modal |
-| `PlayTest.balance` | a bot that taps, buys, casts spells and rebirths at the right time. It prints the curve. Targets:<br>• wave 10 at about 5 min<br>• wave 20 at about 15 min<br>• rebirth unlock at about 35–45 min<br>• no more than 10 defeats per hour outside boss walls |
+| `PlayTest.balance*` | seeded bots that tap, buy, cast spells and rebirth after stalling. They print the curve. Results (run best):<br>• tapper, no ads: 12 at 5 min, 20 at 10, 30 at 20, 39 at 30, rebirth at 30.5 min, best 50 at 60 min, 13 defeats<br>• engaged ad-watcher: 17 / 28 / 45 / 56, rebirth at 31.6 min, best 74, 9 defeats<br>• idle, no taps: best 25 (it lives on the push/retreat loop)<br>The first rebirth comes faster than the 35–45 min target; the Rebirth panel's "push 5 more waves for +N" line nudges players to wait. |
 | `AspectTest` | adds a landscape tablet size to check the letterbox |
 
 ## 11. Out of scope for this pass
